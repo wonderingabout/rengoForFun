@@ -1,9 +1,9 @@
 # rengoForFun
 a:
 
-- vanillaJS powered,
-- ReactJS front-end,
-- nodeJS back-end,
+- vanillaJS powered board engine
+- vanillaJS front-end,
+- node.js back-end,
 - mySQL database rengo server !
 
 # Progress Status
