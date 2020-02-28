@@ -1,76 +1,121 @@
-//go game server:
+// go game server:
 
-const board = {};
-for (let i = 1; i <= 19; i++) {
-    board[i] = null;
-    for (let j = 1; j <= 19; j++) {
-        board[j] = null;
+// see also: https://mathjs.org/docs/datatypes/matrices.html
+
+const Game = {
+    player: { color: "B",
+              players: [],
+              blackPlayers: [],
+              whitePlayers: [],
+              isTeam: false,
+            },
+    board: [],
+    createBoard() {
+        for (let i = 0; i <= 18; i++) {
+            this.board[i] = [];
+            for (let j = 0; j <= 18; j++) {
+                this.board[i][j] = null;
+            }
+        }
+    },
+    line: -1, // ex: 4
+    colm: -1, // ex: 3
+    move: "", // ex: "R16"
+    lines: [],
+    colms: [],
+    moves: [],
+    getLineColm(server) {
+        this.line = server.line,
+        this.colm = server.colm
+    },
+    LineColmToStringCoordinates() {
+        const letters = ["A", "B", "C", "D", "E", "F", "G", "H",
+                         "I", "J", "K", "L", "M", "N", "O", "P",
+                         "Q", "R", "S", "T", "U", "V", "W"];
+        this.move = `${letters[this.line]}${this.colm + 1}`;
+    },
+    captures: { B: [],
+                W: [],
+                current: 0
+              },
+    score: null,
+    winner: null,
+    statuses: { boardIsFull: false,
+                playingIsFinished: false,
+                scoringIsFinished: false,
+                isResigned: false,
+                gameIsFinished: false
+              },
+    updateGameState(server) {
+       this.boardIsFull = checkAndRefreshBoardIsFull();
+    
+        // we should not need to update these if we enforce
+        // specific behaviour when they become true
+        for (status in this.statuses) {
+            if (status === "boardIsFull") {
+                for (let i = 1; i <= 19; i++) {
+                    for (let j = 1; j <= 19; j++) {
+                        if (!board[i][j]) {
+                            this.statuses[status] = true;
+                        }
+                    }
+                }
+                this.statuses[status] = false;
+            } else {
+                this.statuses[status] = server.statuses[status];
+            }
+        }
+    },
+    showBoardMsg(msg) {
+        // post msg through server API
+    },
+    playGame() {
+        this.createBoard();
+
+        while (!this.gameState.values.some( (bool) => Boolean(bool)) ) {
+            this.getMove(server);
+
+            if (this.board[line][colm]) {
+                this.showBoardMsg(`Invalid board move requested: already filled`);
+                continue;
+            }
+            // ko rule
+            if (this.checkRepeatedMove() &&
+                !this.checkSnapback()) {
+                this.ShowBoardMsg(`Invalid board move requested: can't recapture in a ko position`);
+                continue;
+            }
+            if (!this.gameState.isResigned &&
+                this.checkDoublePass()) { // double pass
+                // both players can resign any turn,
+                // handle resign update separately
+                this.playMove();
+                this.switchStoneColor();
+                this.updateGameState(server);
+            } else {
+                this.endGame(server);
+            }
+        }
+
+        console.log("Moving to scoring phase");
+        this.scoreGame();
+        this.endGame(server);
     }
-}
+};
 
-const playing = { player: { color: "B",
-                            players: [],
-                            blackPlayers: [],
-                            whitePlayers: [],
-                            isTeam: false,
-                          },
-                  moves: [], // ex: R16
-                  lines: [], // ex: 4
-                  colms: [], // ex: 3
-                  gameState: { boardIsFull: false,
-                               playingIsFinished: false,
-                               scoringIsFinished: false,
-                               isResigned: false,
-                               gameIsFinished: false
-                             },
-                  captures: { B: [],
-                              W: [],
-                              current: 0
-                            },
-                  score: null,
-                  winner: null
-                };
+playing.playGame();
+
  
-while (!playing.gameState.values.some( (bool) => Boolean(bool)) ) {
-    const move = getMove(server);
-    const line = move.line;
-    const colm = move.colm;
-    if (board[line][colm]) {
-        showBoardMsg(`Invalid board move requested: already filled`);
-        continue;
-    }
-    // ko rule
-    if (checkRepeatedMove(move, playing.moves) &&
-        !checkSnapback(move)) {
-        ShowBoardMsg(`Invalid board move requested: can't recapture in a ko position`);
-        continue;
-    }
-    if (!playing.gameState.isResigned &&
-        checkDoublePass(move, playing.moves)) { // double pass
-        // both players can resign any turn,
-        // handle resign update separately
-        playMove(board, move, playing);
-        switchStoneColor(playing.player);
-        updateGameState(playing.gameState, board, server);
-    } else {
-        endGame(playing.gameState, server);
-    }
-}
 
-console.log("Board is full, moving to scoring phase");
-scoreGame(board, playing.gameState);
-endGame(playing.gameState, server);
 
-function showBoardMsg(msg) {
-    // post msg through server API
-}
- 
-function getMove(server) {
-    return { move: server.move,
-             line: server.line,
-             colm: server.colm
-           };
-}
+
+
+
+
+
+
+
+
 
 function checkRepeatedBoardPosition(move, moves) {
     // ...... repeated board position is more complex than just
@@ -116,24 +161,6 @@ function switchPlayer(player) {
     player.color = getOppositePlayer(player.color);
 }
 
-function updateGameState(gameState, board, server) {
-    playing.boardIsFull = checkBoardIsFull(board);
-
-    // we should not need to update these if we enforce
-    // specific behaviour when they become true
-    for (bool in gameState) {
-        if (bool === "boardIsFull") {
-            for (let i = 1; i <= 19; i++) {
-                for (let j = 1; j <= 19; j++) {
-                    if (!board[i][j]) {
-                        gameState[bool] = true;
-                }
-            }
-            gameState[bool] = false;
-        }
-        gameState[bool] = server.gameState[bool];
-    }
-}
 
 function getAdjacentStonesCoordinates(line, colm) {
     return { left:   { isEdge:  line <= 1, 
