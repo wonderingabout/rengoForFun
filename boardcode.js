@@ -88,8 +88,8 @@ const Game = {
                 this.group.previous.jMin = jMinus;
             } else {
                 if (!this.board[line][jMinus]) {
-                    this.group.libertiesLines.push(line);
-                    this.group.libertiesColms.push(jMinus);
+                    this.group.liberties.lines.push(line);
+                    this.group.liberties.colms.push(jMinus);
                 }
                 break;
             }
@@ -104,8 +104,8 @@ const Game = {
                 this.group.previous.jMax = jPlus;
             } else {
                 if (!this.board[line][jPlus]) {
-                    this.group.libertiesLines.push(line);
-                    this.group.libertiesColms.push(jPlus);
+                    this.group.liberties.lines.push(line);
+                    this.group.liberties.colms.push(jPlus);
                 }
                 break;
             }
