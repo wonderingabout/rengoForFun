@@ -26,6 +26,9 @@ const Game = {
         this.line = server.line;
         this.colm = server.colm;
     },
+    checkLineColmIsValid(line, colm) {
+        return [line, colm].some( e => (e < 0 || e > 19) );
+    },
     convertLineColmToMove() {
         if (this.line === "pass" && this.colm === "pass") {
             this.move = "pass";
@@ -59,6 +62,12 @@ const Game = {
                                     colms: [],
                                     colmIsEmpty: false // to enter the loop while
                                   },
+                       current:   { jMin: null,
+                                    jMax: null,
+                                    line: null,
+                                    colms: [],
+                                    colmIsEmpty: false // to enter the loop while
+                                  },
                        first:     { jMin: null,
                                     jMax: null,
                                     line: null,
@@ -71,23 +80,17 @@ const Game = {
                      };
     },
     assignGroupColmsInSameLine(line) {
-        // empty old previous so we can use it again now
-        this.group.previous.jMin = this.colm;
-        this.group.previous.jMax = this.colm;
-        this.group.previous.line = line;
-        this.group.previous.colms = [];
-        this.group.previous.colmIsEmpty = true;
 
         // using the "swiper" method:
         for (let jMinus = this.colm; jMinus >= 0; jMinus--) {
             if (this.board[line][jMinus] === this.group.color) {
                 this.group.lines.push(line);
                 this.group.colms.push(jMinus);
-                this.group.previous.colms.push(jMinus);
-                this.group.previous.colmIsEmpty = false;
-                this.group.previous.jMin = jMinus;
+                this.group.current.colms.push(jMinus);
+                this.group.current.colmIsEmpty = false;
+                this.group.current.jMin = jMinus;
             } else {
-                if (!this.board[line][jMinus]) {
+                if (!this.board[line][jMinus] && checkLineColmIsValid(line, jMinus)) {
                     this.group.liberties.lines.push(line);
                     this.group.liberties.colms.push(jMinus);
                 }
@@ -99,11 +102,11 @@ const Game = {
             if (this.board[line][jPlus] === this.group.color) {
                 this.group.lines.push(line);
                 this.group.colms.push(jPlus);
-                this.group.previous.colms.push(jPlus);
-                this.group.previous.colmIsEmpty = false;
-                this.group.previous.jMax = jPlus;
+                this.group.current.colms.push(jPlus);
+                this.group.current.colmIsEmpty = false;
+                this.group.current.jMax = jPlus;
             } else {
-                if (!this.board[line][jPlus]) {
+                if (!this.board[line][jPlus] && checkLineColmIsValid(line, jPlus)) {
                     this.group.liberties.lines.push(line);
                     this.group.liberties.colms.push(jPlus);
                 }
@@ -114,7 +117,7 @@ const Game = {
         // again in assignGroupStonesInAllLines() when switching from
         // line-- to line++
         if (line === this.line) {
-            this.group.first = this.group.previous;
+            this.group.first = this.group.current;
         }
     },
     assignGroupStonesInAllLines() {
@@ -125,17 +128,29 @@ const Game = {
         // if there is at least one stone in this line (!colmIsEmpty),
         // there may be several more in the next lines
 
-        // going from this.line to lowest (most at left) line,
-        // starting from this.line
         while (!this.group.previous.colmIsEmpty) {
+            // going from this.line to lowest (most at left) line,
+            // starting from this.line
             for (let iMinus = this.line; iMinus >= 0; iMinus--) {
                 this.assignGroupColmsInSameLine(iMinus);
             }
+
+            // backup old current to previous,
+            this.group.previous = this.group.current;
+
+            // empty old current so we can use it again for lines++
+            this.group.current.jMin = this.colm;
+            this.group.current.jMax = this.colm;
+            this.group.current.line = line;
+            this.group.current.colms = [];
+            this.group.current.colmIsEmpty = true;
         }
 
         // going from this.line to highest (most at right) line,
-        // starting from this.line + 1 (already did this.line)
+        // starting from this.line + 1 (already did this.line, 
+        // so we assign it as the previous line before this.line + 1)
         this.group.previous = this.group.first;
+
         while (!this.group.previous.colmIsEmpty) {
             for (let iPlus = this.line + 1; iPlus <= 18; iPlus++) {
                 this.assignGroupColmsInSameLine(iPlus);
@@ -144,6 +159,7 @@ const Game = {
 
         // cleaning after all is done
         delete this.group.first;
+        delete this.group.current;
         delete this.group.previous;
     },
     captures: { B: [],
