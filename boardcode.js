@@ -97,7 +97,6 @@ const Game = {
             // add recursivity with this dir and all its children
             const adjacentChildInSameGroup = getAdjacentStonesInSameGroup(adjacentInSameGroup[dir].line,
                                                                           adjacentInSameGroup[dir].colm);
-
         }
     },
     captures: { B: [],
