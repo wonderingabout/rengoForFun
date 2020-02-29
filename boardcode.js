@@ -47,57 +47,69 @@ const Game = {
         //const fakeCapture = ......................
         return (this.captures.length - 1 !== fakeCapture);
     },
-    getAdjacentStonesCoordinates(line, colm) {
-        return { left:   { isEdge:  line <= 0, 
-                           line:    line - 1,
-                           colm
-                         },
-                 right:  { isEdge:  line >= 18,
-                           line:    line + 1,
-                           colm
-                         },
-                 top:    { isEdge:  colm <= 0,
-                           line,
-                           colm:    colm - 1
-                         },
-                 bottom: { isEdge:  colm >= 18,
-                           line,
-                           colm:    colm + 1
-                         }
-               };
+    group: {},
+    createGroup() {
+        this.group = { lines: [],
+                       colms: [],
+                       color: this.board[this.line][this.colm],
+                       previous:  { jMin: null,
+                                    jMax: null,
+                                    line: null,
+                                    colms: [],
+                                    colmIsEmpty: false
+                                  },
+                       liberties: { lines: [],
+                                    colms: []
+                                  }
+                     };
     },
-    getAdjacentStonesInSameGroup(line, colm) {
-        const adjacent = getAdjacentStonesCoordinates(line, colm);
-        const adjacentInSameGroup = {};
-        for (dir in adjacent) {
-            const adjacentLine = adjcent[dir].line;
-            const adjacentColm = adjacent[dir].colm;
-            if (!adjacent[dir].isEdge &&
-                this.board[adjacentLine][adjacentColm] === this.player.color) {
-                adjacentInSameGroup[dir] = adjacent[dir];
+    assignGroupColmsInSameLine(line) {
+        // using the "swiper" method:
+        for (let jMinus = this.colm; jMinus >= 0; jMinus--) {
+            if (this.board[line][jMinus] === this.group.color) {
+                this.group.lines.push(line);
+                this.group.colms.push(jMinus);
+                this.group.previous.colms.push(jMinus);
+                this.group.previous.colmIsEmpty = false;
+            } else {
+                if (!this.board[line][jMinus]) {
+                    this.group.libertiesLines.push(line);
+                    this.group.libertiesColms.push(jMinus);
+                }
+                this.group.previous.jMin = jMinus;
+                break;
             }
         }
-        return adjacentInSameGroup;
-    },
-    getGroup() {
-        const group = { lines: [this.line],
-                        colms: [this.colm],
-                        parentLine: this.line,
-                        parentColm: this.colm,
-                        liberties: null // uncovered in this method, added for exhaustivity
-                      };
-    
-        for (dir in getAdjacentStonesInSameGroup(parentLine, parentColm)) { // exit if no keys
-            // define inside the loop so we can get a new const at every loop iteration
-            // until we explore all the board
-            const adjacentInSameGroup = getAdjacentStonesInSameGroup(parentLine, parentColm);
-            group.lines.push(adjacentInSameGroup[dir].line);
-            group.colms.push(adjacentInSameGroup[dir].colm);
-
-            // add recursivity with this dir and all its children
-            const adjacentChildInSameGroup = getAdjacentStonesInSameGroup(adjacentInSameGroup[dir].line,
-                                                                          adjacentInSameGroup[dir].colm);
+        for (let jPlus = this.colm + 1; jPlus <= 18; jPlus++) {
+            this.group.previous.colmIsEmpty = false;
+            if (this.board[line][jPlus] === this.group.color) {
+                this.group.lines.push(line);
+                this.group.colms.push(jPlus);
+                this.group.previous.colms.push(jPlus);
+                this.group.previous.colmIsEmpty = false;
+            } else {
+                if (!this.board[line][jPlus]) {
+                    this.group.libertiesLines.push(line);
+                    this.group.libertiesColms.push(jPlus);
+                }
+                break;
+            }
         }
+    },
+    getGroupStonesInAllLines() {
+        this.createGroup();
+
+        // for all lines, due to possible complex and intertwined
+        // group shapes, check if (jMin < J < jMax) || (jMinus-- or jPlus++
+        // leads to a stone which is part of the group (same color)
+        // then we can continue to grow the group 
+
+        this.group.previous = { jMin: null,
+                                jMax: null,
+                                line: null,
+                                colms: [],
+                                colmIsEmpty: false
+                              };
     },
     captures: { B: [],
                 W: [],
@@ -213,37 +225,3 @@ const Game = {
 };
 
 Game.playGame();
-
-
-
-
-
-
-
-
-
-
-
-
-function getCoordinateLiberties(line, colm, board) {
-    const adjacent = getAdjacentStonesStatus(line, colm, board);
-    const liberties = {};
-    for (dir in adjacent) {
-        if (!adjacent[dir].isEdge &&
-            !adjacent[dir].content) {
-            liberties[dir] = true;
-        }
-    }
-    const libertiesTotal = Object.values(liberties)
-                                 .reduce( (acc, curr) => (acc + curr), 0 );
-    liberties.total = libertiesTotal;
-    return liberties;
-}
-
-function getGroupLiberties(line, colm, board) {
-}
- 
-
- 
-
-
