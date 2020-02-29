@@ -1,7 +1,5 @@
 // go game server:
 
-// see also: https://mathjs.org/docs/datatypes/matrices.html
-
 const Game = {
     player: { color: "B",
               players: [],
@@ -28,82 +26,174 @@ const Game = {
         this.line = server.line,
         this.colm = server.colm
     },
-    LineColmToStringCoordinates() {
-        const letters = ["A", "B", "C", "D", "E", "F", "G", "H",
-                         "I", "J", "K", "L", "M", "N", "O", "P",
-                         "Q", "R", "S", "T", "U", "V", "W"];
-        this.move = `${letters[this.line]}${this.colm + 1}`;
+    convertLineColmToMove() {
+        if (this.line === "pass" && this.colm === "pass") {
+            this.move = "pass";
+        } else {
+            const letters = ["A", "B", "C", "D", "E", "F", "G",
+                             "H", "I", "J", "K", "L", "M", "N",
+                             "O", "P", "Q", "R", "S", "T"];
+            this.move = `${letters[this.line]}${this.colm + 1}`;
+        }
     },
+    checkRepeatedMoveTwoAgo() {
+        // ...... repeated board position is more complex than just
+        // checking move from 2 moves ago, should be able to backwards calculate
+        // board as it was 2 moves ago
+        // start with this for now
+        return (this.moves[this.moves.length - 2] === move);
+    },
+    checkSnapback() {
+        //const fakeCapture = ......................
+        return (this.captures.length - 1 !== fakeCapture);
+    },
+    getAdjacentStonesCoordinates(line, colm) {
+        return { left:   { isEdge:  line <= 0, 
+                           line:    line - 1,
+                           colm
+                         },
+                 right:  { isEdge:  line >= 18,
+                           line:    line + 1,
+                           colm
+                         },
+                 top:    { isEdge:  colm <= 0,
+                           line,
+                           colm:    colm - 1
+                         },
+                 bottom: { isEdge:  colm >= 18,
+                           line,
+                           colm:    colm + 1
+                         }
+               };
+    },
+    getAdjacentStonesInSameGroup(line, colm) {
+        const adjacent = getAdjacentStonesCoordinates(line, colm);
+        const adjacentInSameGroup = {};
+        for (dir in adjacent) {
+            if (!adjacent[dir].isEdge &&
+                this.board[adjcent[dir].line][adjacent[dir].colm] === this.player.color) {
+                adjacentInSameGroup[dir] = adjacent[dir];
+            }
+        }
+        return adjacentInSameGroup;
+    },
+    // TODO:
+    // getNearbyGroupStones() {}
+    // getAllStonesOfGroup() {}
+    //
+    // getGroupLiberties() {}
     captures: { B: [],
                 W: [],
                 current: 0
               },
+    fakeCaptureNewBoard() {
+        // don't actually capture, return a copy of what
+        // the future board would be if the capture happened 
+    },
+    captureGroup() {
+    },
+    showBoardMsg(msg) {
+        // post msg through server API
+    },
     score: null,
     winner: null,
-    statuses: { boardIsFull: false,
-                playingIsFinished: false,
-                scoringIsFinished: false,
+    checkPass() {
+        return (this.move === "pass");
+    },
+    checkDoublePass() {
+        return (this.move === this.moves[this.moves.length - 1]);
+    },
+    statuses: { isFull: false,
+                isPlaying: false,
+                isScored: false,
                 isResigned: false,
-                gameIsFinished: false
+                isFinished: false
               },
-    updateGameState(server) {
-       this.boardIsFull = checkAndRefreshBoardIsFull();
+    updateStatus() {
+       this.isFull = checkAndRefreshBoardIsFull();
     
         // we should not need to update these if we enforce
         // specific behaviour when they become true
         for (status in this.statuses) {
-            if (status === "boardIsFull") {
-                for (let i = 1; i <= 19; i++) {
-                    for (let j = 1; j <= 19; j++) {
+            if (status === "isFull") {
+                for (let i = 1; i <= 18; i++) {
+                    for (let j = 1; j <= 18; j++) {
                         if (!board[i][j]) {
-                            this.statuses[status] = true;
+                            this.statuses[status] = false;
                         }
                     }
                 }
-                this.statuses[status] = false;
+                this.statuses[status] = true;
             } else {
                 this.statuses[status] = server.statuses[status];
             }
         }
     },
-    showBoardMsg(msg) {
-        // post msg through server API
+    playMove() {
+        this.board[this.line][this.colm] = this.player.color;
+    
+        // if (capture) capture and remove dead stones and add to captures count
+        this.captureGroup();
+    
+        this.moves.push(this.move);
+        this.lines.push(this.line);
+        this.colms.push(this.colm);
+    
+    },
+    getOppositeColor() {
+        return (this.player.color === "B" ? "W" : "B");
+    },
+    switchPlayer() {
+        this.player.color = getOppositePlayer();
     },
     playGame() {
         this.createBoard();
 
         while (!this.gameState.values.some( (bool) => Boolean(bool)) ) {
             this.getMove(server);
-
-            if (this.board[line][colm]) {
-                this.showBoardMsg(`Invalid board move requested: already filled`);
-                continue;
-            }
-            // ko rule
-            if (this.checkRepeatedMove() &&
-                !this.checkSnapback()) {
-                this.ShowBoardMsg(`Invalid board move requested: can't recapture in a ko position`);
-                continue;
-            }
-            if (!this.gameState.isResigned &&
-                this.checkDoublePass()) { // double pass
-                // both players can resign any turn,
-                // handle resign update separately
+            if (!this.checkPass()) {
+                if (this.board[this.line][this.colm]) {
+                    this.showBoardMsg(`Invalid board move requested: already filled`);
+                    continue;
+                }
+                // ko rule
+                if (this.checkRepeatedMoveTwoAgo() &&
+                    !this.checkSnapback()) {
+                    this.ShowBoardMsg(`Invalid board move requested: can't recapture in a ko position`);
+                    continue;
+                }
                 this.playMove();
-                this.switchStoneColor();
-                this.updateGameState(server);
+                this.switchPlayer();
+                this.updateStatus();
+                continue;
             } else {
-                this.endGame(server);
+                // pass is a move, resign is an event: handle differently
+                if (this.checkDoublePass()) {
+                    this.scoreGame();
+                    if (this.statuses.isScored) {
+                        this.endGame();
+                        this.uploadGameToServer(server);
+                        break;
+                    }
+                    continue;
+                }
+                continue;
             }
         }
-
-        console.log("Moving to scoring phase");
-        this.scoreGame();
-        this.endGame(server);
+    },
+    scoreGame() {
+        // let both players manually remove dead stones
+        // until they both agree on score
+    },
+    endGame() {
+        // 
+    },
+    uploadGameToServer(server) {
+        // once the game has ended, upload it to server
     }
 };
 
-playing.playGame();
+Game.playGame();
 
  
 
@@ -115,86 +205,7 @@ playing.playGame();
 
 
 
-
-
-function checkRepeatedBoardPosition(move, moves) {
-    // ...... repeated board position is more complex than just
-    // checking move from 2 moves ago, should be able to backwards calculate
-    // board as it was 2 moves ago
-    return (moves[moves.length - 2] === move);
-}
-
-function checkSnapback(move, capturesLog) {
-    const iMax = capturesLog.length - 1;
-    //const fakeCapturesLog = ......................
-    return capturesLog[iMax] !== capturesLog[iMax -1];
-}
-
-function checkDoublePass(move, moves) {
-    return (moves[moves.length - 1] === move);
-}
-
-function playMove(board, move, player) {
-    board[move.line][move.colm] = player.color;
-
-    // if (capture) capture and remove dead stones and add to captures count
-    /*captures: { B: [0],
-        W: [0],
-        current: 0,
-    const currentCapturesNumber = 
-    logs.captures[playing.player].push(currentCapturesNumber);
-    logs.captures[playing.player].push(currentCapturesNumber);
-    const oppositePlayer = getOppositePlayer(playing.player); 
-    logs.captures[oppositePlayer].push(0);*/
-
-    playing.moves.push(JSON.stringify(move));
-    playing.lines.push(move.line);
-    playing.colms.push(move.colm);
-
-}
-
-function getOppositePlayer(color) {
-    return (color === "B" ? "W" : "B");
-}
-
-function switchPlayer(player) {
-    player.color = getOppositePlayer(player.color);
-}
-
-
-function getAdjacentStonesCoordinates(line, colm) {
-    return { left:   { isEdge:  line <= 1, 
-                       line:    line - 1,
-                       colm
-                     },
-             right:  { isEdge:  line >= 19,
-                       line:    line + 1,
-                       colm
-                     },
-             top:    { isEdge:  colm <= 1,
-                       line,
-                       colm:    colm - 1
-                     },
-             bottom: { isEdge:  colm >= 19,
-                       line,
-                       colm:    colm + 1
-                     }
-           };
-}
-
-function getAdjacentStonesInSameGroup(line, colm, board, player) {
-    const adjacent = getAdjacentStonesCoordinates(line, colm);
-    const adjacentInSameGroup = {};
-    for (dir in adjacent) {
-        if (!adjacent[dir].isEdge &&
-            board[adjcent[dir].line][adjacent[dir].colm] === player.color) {
-            adjacentInSameGroup[dir] = adjacent[dir];
-        }
-    }
-    return adjacentInSameGroup;
-}
-
-function getGroupStatusFromStone(parentLine, parentColm, board, player) {
+function getNearbyGroupStones(parentLine, parentColm, board, player) {
     const groupStatus = { lines: [parentLine],
                           colms: [parentColm],
                           parentLine,
@@ -214,7 +225,7 @@ function getGroupStatusFromStone(parentLine, parentColm, board, player) {
 
 }
 
-function getStoneLibertiesStatus(line, colm, board) {
+function getCoordinateLiberties(line, colm, board) {
     const adjacent = getAdjacentStonesStatus(line, colm, board);
     const liberties = {};
     for (dir in adjacent) {
@@ -229,17 +240,10 @@ function getStoneLibertiesStatus(line, colm, board) {
     return liberties;
 }
 
-function countGroupLiberties(line, colm, board) {
+function getGroupLiberties(line, colm, board) {
 }
  
-function captureGroup(line, colm, board) {
-}
+
  
-function fakeCaptureGroup(line, colm, board) {
-}
 
-function scoreGame(playing, server) {
-}
 
-function endGame(playing, server) {
-}
