@@ -70,18 +70,36 @@ const Game = {
         const adjacent = getAdjacentStonesCoordinates(line, colm);
         const adjacentInSameGroup = {};
         for (dir in adjacent) {
+            const adjacentLine = adjcent[dir].line;
+            const adjacentColm = adjacent[dir].colm;
             if (!adjacent[dir].isEdge &&
-                this.board[adjcent[dir].line][adjacent[dir].colm] === this.player.color) {
+                this.board[adjacentLine][adjacentColm] === this.player.color) {
                 adjacentInSameGroup[dir] = adjacent[dir];
             }
         }
         return adjacentInSameGroup;
     },
-    // TODO:
-    // getNearbyGroupStones() {}
-    // getAllStonesOfGroup() {}
-    //
-    // getGroupLiberties() {}
+    getGroup() {
+        const group = { lines: [this.line],
+                        colms: [this.colm],
+                        parentLine: this.line,
+                        parentColm: this.colm,
+                        liberties: null // uncovered in this method, added for exhaustivity
+                      };
+    
+        for (dir in getAdjacentStonesInSameGroup(parentLine, parentColm)) { // exit if no keys
+            // define inside the loop so we can get a new const at every loop iteration
+            // until we explore all the board
+            const adjacentInSameGroup = getAdjacentStonesInSameGroup(parentLine, parentColm);
+            group.lines.push(adjacentInSameGroup[dir].line);
+            group.colms.push(adjacentInSameGroup[dir].colm);
+
+            // add recursivity with this dir and all its children
+            const adjacentChildInSameGroup = getAdjacentStonesInSameGroup(adjacentInSameGroup[dir].line,
+                                                                          adjacentInSameGroup[dir].colm);
+
+        }
+    },
     captures: { B: [],
                 W: [],
                 current: 0
@@ -91,6 +109,7 @@ const Game = {
         // the future board would be if the capture happened 
     },
     captureGroup() {
+        // remove all stones of dead group, do not play our move
     },
     showBoardMsg(msg) {
         // post msg through server API
@@ -186,7 +205,8 @@ const Game = {
         // until they both agree on score
     },
     endGame() {
-        // 
+        // update all data of the completed game before
+        // we submit it to server
     },
     uploadGameToServer(server) {
         // once the game has ended, upload it to server
@@ -195,7 +215,6 @@ const Game = {
 
 Game.playGame();
 
- 
 
 
 
@@ -205,25 +224,7 @@ Game.playGame();
 
 
 
-function getNearbyGroupStones(parentLine, parentColm, board, player) {
-    const groupStatus = { lines: [parentLine],
-                          colms: [parentColm],
-                          parentLine,
-                          parentColm
-                        };
 
-    for (dir in getAdjacentStonesInSameGroup(parentLine, parentColm, board, player)) { // exit if no keys
-        groupStatus.lines.push(adjacentInSameGroup[dir].line);
-        groupStatus.colms.push(adjacentInSameGroup[dir].colm);
-        const adjacentChildInSameGroup = getAdjacentStonesInSameGroup(adjacentInSameGroup[dir].line,
-                                                                adjacentInSameGroup[dir].colm,
-                                                                board, player);
-        // increment adjacent when we're done with this dir and all its children
-    }
-    
-
-
-}
 
 function getCoordinateLiberties(line, colm, board) {
     const adjacent = getAdjacentStonesStatus(line, colm, board);
