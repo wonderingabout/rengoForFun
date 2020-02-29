@@ -16,15 +16,15 @@ const Game = {
             }
         }
     },
-    line: -1, // ex: 4
-    colm: -1, // ex: 3
+    line: null, // ex: 4
+    colm: null, // ex: 3
     move: "", // ex: "R16"
     lines: [],
     colms: [],
     moves: [],
     getLineColm(server) {
-        this.line = server.line,
-        this.colm = server.colm
+        this.line = server.line;
+        this.colm = server.colm;
     },
     convertLineColmToMove() {
         if (this.line === "pass" && this.colm === "pass") {
@@ -45,18 +45,25 @@ const Game = {
     },
     checkSnapback() {
         //const fakeCapture = ......................
-        return (this.captures.length - 1 !== fakeCapture);
+        return ((this.captures.length - 1) !== fakeCapture);
     },
     group: {},
     createGroup() {
         this.group = { lines: [],
                        colms: [],
+                       currColmIsEmpty: false,
                        color: this.board[this.line][this.colm],
                        previous:  { jMin: null,
                                     jMax: null,
                                     line: null,
                                     colms: [],
-                                    colmIsEmpty: false
+                                    colmIsEmpty: false // to enter the loop while
+                                  },
+                       first:     { jMin: null,
+                                    jMax: null,
+                                    line: null,
+                                    colms: [],
+                                    colmIsEmpty: false // to enter the loop while
                                   },
                        liberties: { lines: [],
                                     colms: []
@@ -64,6 +71,13 @@ const Game = {
                      };
     },
     assignGroupColmsInSameLine(line) {
+        // empty old previous so we can use it again now
+        this.group.previous.jMin = this.colm;
+        this.group.previous.jMax = this.colm;
+        this.group.previous.line = line;
+        this.group.previous.colms = [];
+        this.group.previous.colmIsEmpty = true;
+
         // using the "swiper" method:
         for (let jMinus = this.colm; jMinus >= 0; jMinus--) {
             if (this.board[line][jMinus] === this.group.color) {
@@ -71,22 +85,23 @@ const Game = {
                 this.group.colms.push(jMinus);
                 this.group.previous.colms.push(jMinus);
                 this.group.previous.colmIsEmpty = false;
+                this.group.previous.jMin = jMinus;
             } else {
                 if (!this.board[line][jMinus]) {
                     this.group.libertiesLines.push(line);
                     this.group.libertiesColms.push(jMinus);
                 }
-                this.group.previous.jMin = jMinus;
                 break;
             }
         }
+
         for (let jPlus = this.colm + 1; jPlus <= 18; jPlus++) {
-            this.group.previous.colmIsEmpty = false;
             if (this.board[line][jPlus] === this.group.color) {
                 this.group.lines.push(line);
                 this.group.colms.push(jPlus);
                 this.group.previous.colms.push(jPlus);
                 this.group.previous.colmIsEmpty = false;
+                this.group.previous.jMax = jPlus;
             } else {
                 if (!this.board[line][jPlus]) {
                     this.group.libertiesLines.push(line);
@@ -95,21 +110,41 @@ const Game = {
                 break;
             }
         }
+        // storing first line group data so that we don't process it
+        // again in assignGroupStonesInAllLines() when switching from
+        // line-- to line++
+        if (line === this.line) {
+            this.group.first = this.group.previous;
+        }
     },
-    getGroupStonesInAllLines() {
+    assignGroupStonesInAllLines() {
         this.createGroup();
 
         // for all lines, due to possible complex and intertwined
-        // group shapes, check if (jMin < J < jMax) || (jMinus-- or jPlus++
-        // leads to a stone which is part of the group (same color)
-        // then we can continue to grow the group 
+        // group shapes, check all colms of the same line (0 to 18):
+        // if there is at least one stone in this line (!colmIsEmpty),
+        // there may be several more in the next lines
 
-        this.group.previous = { jMin: null,
-                                jMax: null,
-                                line: null,
-                                colms: [],
-                                colmIsEmpty: false
-                              };
+        // going from this.line to lowest (most at left) line,
+        // starting from this.line
+        while (!this.group.previous.colmIsEmpty) {
+            for (let iMinus = this.line; iMinus >= 0; iMinus--) {
+                this.assignGroupColmsInSameLine(iMinus);
+            }
+        }
+
+        // going from this.line to highest (most at right) line,
+        // starting from this.line + 1 (already did this.line)
+        this.group.previous = this.group.first;
+        while (!this.group.previous.colmIsEmpty) {
+            for (let iPlus = this.line + 1; iPlus <= 18; iPlus++) {
+                this.assignGroupColmsInSameLine(iPlus);
+            }
+        }
+
+        // cleaning after all is done
+        delete this.group.first;
+        delete this.group.previous;
     },
     captures: { B: [],
                 W: [],
@@ -121,6 +156,9 @@ const Game = {
     },
     captureGroup() {
         // remove all stones of dead group, do not play our move
+    },
+    checkSuicide() {
+        // return true if the move is played in the last liberty of the group
     },
     showBoardMsg(msg) {
         // post msg through server API
@@ -146,8 +184,8 @@ const Game = {
         // specific behaviour when they become true
         for (status in this.statuses) {
             if (status === "isFull") {
-                for (let i = 1; i <= 18; i++) {
-                    for (let j = 1; j <= 18; j++) {
+                for (let i = 0; i <= 18; i++) {
+                    for (let j = 0; j <= 18; j++) {
                         if (!board[i][j]) {
                             this.statuses[status] = false;
                         }
