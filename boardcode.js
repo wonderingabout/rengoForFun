@@ -41,15 +41,15 @@ const Game = {
     captures: { B: [],
                 W: []
               },
-    playCaptureGroup() {
-        captureGroup(this.board, this.group, this.player.color,
-                     this.captures, this.line, this.colm);
+    playCaptures() {
+        captureCapturableNearbyGroups(this.board, this.player.color,
+                                      this.player.oppositeColor,
+                                      this.captures, this.line, this.colm);
     },
-    fakeCaptureGroup(board, group) {
-        const fakeBoard = { ...this.board };
-        removeGroup(this.group, fakeBoard);
-        const fakeCaptures = { ...this.captures };
-        fakeBoard[this.line][this.colm] = this.player.color;
+    fakeCaptures() {
+        // check what would happen if we play the capture,
+        // using a deep copy of the real board as well as
+        // all other parameters fake copies if needed
     },
     checkSnapbackPosition() {
         // check if next player can capture the stone that captured a stone,
