@@ -52,35 +52,98 @@ const Game = {
         //const fakeCapture = ......................
         return ((this.captures.length - 1) !== fakeCapture);
     },
-    createNewGroup(line, colm) {
-        this.group = { color: this.board[line][colm],
-                       oppositeColor: getOppositeColor(this.board[line][colm]),
-                       board: createBoard()
-                     };
+    getNewGroup(x, y, gameBoard) {
+        return { color: gameBoard[x][y],
+                 oppositeColor: this.getOppositeColor(gameBoard[x][y]),
+                 board: this.createBoard(),
+                 lines: [],
+                 colms: [],
+                 liberties: { lines: [],
+                              colms: []
+                            }
+               };
     },
     // using recursion:
     // ex: of how it works provided by @Dorus: https://github.com/Dorus
     // inspired on https://en.m.wikipedia.org/wiki/Flood_fill
-    fill(x, y, color, oppositeColor, gameBoard, groupBoard) {
-        // fill a new empty groupBoard only with the group's coordinates
+    /*  input (gameBoard):
+
+        ....
+        WBB.
+        .WB.
+        ..W.
+
+        output (groupBoard) for x = 2 and y = 2:
+
+        .LL.
+        .BBL
+        ..BL
+        ....
+
+    */
+    fill(x, y, color, oppositeColor, gameBoard, group) {
+        if (this.checkLineColmIsNotValid(x, y)) return; // check if stone is out of board edges
+
+        if (gameBoard[x][y] === oppositeColor) return; // check if stone is not part of our group (opposite color)
+        if (!gameBoard[x][y]) {
+            group.board[x][y] = "L"; // liberty of the group (empty stone)
+            group.liberties.lines.push(x);
+            group.liberties.colms.push(y);
+            return;
+        }
+
+        // else gameBoard[x][y] === color, do we want to add it ?
+        if (group.board[x][y] === color || group.board[x][y] === "L") return; // check if we have done this spot before
+
+        group.board[x][y] = color; // mark group.board spot as done (our stone color),
+        group.lines.push(x); // keep track of all our group stone coordinates
+        group.colms.push(y);
+        // then check the leaves of that marked stone of our group
+        fill(x    , y + 1, color, oppositeColor, gameBoard, group);
+        fill(x    , y - 1, color, oppositeColor, gameBoard, group);
+        fill(x + 1, y    , color, oppositeColor, gameBoard, group);
+        fill(x - 1, y    , color, oppositeColor, gameBoard, group);
     },
-    fillSanityChecks(x, y, color, oppositeColor, gameBoard, groupBoard) {
+    getGroup(x, y, gameBoard) {
         // check if there is no stone (hence no group) in that position
         if (!gameBoard[x][y]) {
-            throw new `No group in position line:${x} colm:${y}`;
+            return;
         }
-        this.fill(x, y, color, oppositeColor, gameBoard, groupBoard);
+        const group = this.getNewGroup(x, y, gameBoard);
+
+        const color = group.color;
+        const oppositeColor = this.getOppositeColor(color);
+        this.fill(x, y, color, oppositeColor, gameBoard, group);
+        return group;
+    },
+    assignGroup() {
+        this.group = this.getGroup(this.line, this.colm, this.board);
+    },
+    checkGroupIsCapturable(group) {
+        if (group.liberties.lines.length === 1 &&
+            group.liberties.lines[0] === this.line &&
+            group.liberties.colms[0] === this.colm) {
+            return true;
+        }
+        return false;
     },
     captures: { B: [],
-                W: [],
-                current: 0
+                W: []
               },
-    fakeCaptureNewBoard() {
+    removeGroup(group) {
+        // remove all stones of dead group, do not play our move
+        const groupLength = this.group.lines.length;
+        for (i in [...Array(groupLength)]) {
+            const lines = this.group.lines;
+            const colms = this.group.colms;
+            this.board[lines[i]][colms[i]] = null;
+        }
+        this.captures[group.oppositeColor].push(groupLength);
+        this.captures[group.color].push(0);
+    },
+    fakeCaptureGroup(group) {
         // don't actually capture, return a copy of what
         // the future board would be if the capture happened 
-    },
-    captureGroup() {
-        // remove all stones of dead group, do not play our move
     },
     checkSuicide() {
         // return true if the move is played in the last liberty of the group
