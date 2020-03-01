@@ -1,5 +1,7 @@
 // go game server:
 
+// make a class later
+
 const Game = {
     player: { color: "B",
               players: [],
@@ -26,8 +28,8 @@ const Game = {
         this.line = server.line;
         this.colm = server.colm;
     },
-    checkLineColmIsValid(line, colm) {
-        return [line, colm].some( e => (e < 0 || e > 19) );
+    checkLineColmIsNotValid(line, colm) {
+        return [line, colm].some( (e) => e < 0 || e > 19 );
     },
     convertLineColmToMove() {
         if (this.line === "pass" && this.colm === "pass") {
@@ -50,117 +52,24 @@ const Game = {
         //const fakeCapture = ......................
         return ((this.captures.length - 1) !== fakeCapture);
     },
-    group: {},
-    createGroup() {
-        this.group = { lines: [],
-                       colms: [],
-                       currColmIsEmpty: false,
-                       color: this.board[this.line][this.colm],
-                       previous:  { jMin: null,
-                                    jMax: null,
-                                    line: null,
-                                    colms: [],
-                                    colmIsEmpty: false // to enter the loop while
-                                  },
-                       current:   { jMin: null,
-                                    jMax: null,
-                                    line: null,
-                                    colms: [],
-                                    colmIsEmpty: false // to enter the loop while
-                                  },
-                       first:     { jMin: null,
-                                    jMax: null,
-                                    line: null,
-                                    colms: [],
-                                    colmIsEmpty: false // to enter the loop while
-                                  },
-                       liberties: { lines: [],
-                                    colms: []
-                                  }
+    createNewGroup(line, colm) {
+        this.group = { color: this.board[line][colm],
+                       oppositeColor: getOppositeColor(this.board[line][colm]),
+                       board: createBoard()
                      };
     },
-    assignGroupColmsInSameLine(line) {
-
-        // using the "swiper" method:
-        for (let jMinus = this.colm; jMinus >= 0; jMinus--) {
-            if (this.board[line][jMinus] === this.group.color) {
-                this.group.lines.push(line);
-                this.group.colms.push(jMinus);
-                this.group.current.colms.push(jMinus);
-                this.group.current.colmIsEmpty = false;
-                this.group.current.jMin = jMinus;
-            } else {
-                if (!this.board[line][jMinus] && checkLineColmIsValid(line, jMinus)) {
-                    this.group.liberties.lines.push(line);
-                    this.group.liberties.colms.push(jMinus);
-                }
-                break;
-            }
-        }
-
-        for (let jPlus = this.colm + 1; jPlus <= 18; jPlus++) {
-            if (this.board[line][jPlus] === this.group.color) {
-                this.group.lines.push(line);
-                this.group.colms.push(jPlus);
-                this.group.current.colms.push(jPlus);
-                this.group.current.colmIsEmpty = false;
-                this.group.current.jMax = jPlus;
-            } else {
-                if (!this.board[line][jPlus] && checkLineColmIsValid(line, jPlus)) {
-                    this.group.liberties.lines.push(line);
-                    this.group.liberties.colms.push(jPlus);
-                }
-                break;
-            }
-        }
-        // storing first line group data so that we don't process it
-        // again in assignGroupStonesInAllLines() when switching from
-        // line-- to line++
-        if (line === this.line) {
-            this.group.first = this.group.current;
-        }
+    // using recursion:
+    // ex: of how it works provided by @Dorus: https://github.com/Dorus
+    // inspired on https://en.m.wikipedia.org/wiki/Flood_fill
+    fill(x, y, color, oppositeColor, gameBoard, groupBoard) {
+        // fill a new empty groupBoard only with the group's coordinates
     },
-    assignGroupStonesInAllLines() {
-        this.createGroup();
-
-        // for all lines, due to possible complex and intertwined
-        // group shapes, check all colms of the same line (0 to 18):
-        // if there is at least one stone in this line (!colmIsEmpty),
-        // there may be several more in the next lines
-
-        while (!this.group.previous.colmIsEmpty) {
-            // going from this.line to lowest (most at left) line,
-            // starting from this.line
-            for (let iMinus = this.line; iMinus >= 0; iMinus--) {
-                this.assignGroupColmsInSameLine(iMinus);
-            }
-
-            // backup old current to previous,
-            this.group.previous = this.group.current;
-
-            // empty old current so we can use it again for lines++
-            this.group.current.jMin = this.colm;
-            this.group.current.jMax = this.colm;
-            this.group.current.line = line;
-            this.group.current.colms = [];
-            this.group.current.colmIsEmpty = true;
+    fillSanityChecks(x, y, color, oppositeColor, gameBoard, groupBoard) {
+        // check if there is no stone (hence no group) in that position
+        if (!gameBoard[x][y]) {
+            throw new `No group in position line:${x} colm:${y}`;
         }
-
-        // going from this.line to highest (most at right) line,
-        // starting from this.line + 1 (already did this.line, 
-        // so we assign it as the previous line before this.line + 1)
-        this.group.previous = this.group.first;
-
-        while (!this.group.previous.colmIsEmpty) {
-            for (let iPlus = this.line + 1; iPlus <= 18; iPlus++) {
-                this.assignGroupColmsInSameLine(iPlus);
-            }
-        }
-
-        // cleaning after all is done
-        delete this.group.first;
-        delete this.group.current;
-        delete this.group.previous;
+        this.fill(x, y, color, oppositeColor, gameBoard, groupBoard);
     },
     captures: { B: [],
                 W: [],
@@ -193,21 +102,23 @@ const Game = {
                 isResigned: false,
                 isFinished: false
               },
-    updateStatus() {
-       this.isFull = checkAndRefreshBoardIsFull();
-    
-        // we should not need to update these if we enforce
-        // specific behaviour when they become true
-        for (status in this.statuses) {
-            if (status === "isFull") {
-                for (let i = 0; i <= 18; i++) {
-                    for (let j = 0; j <= 18; j++) {
-                        if (!board[i][j]) {
-                            this.statuses[status] = false;
-                        }
-                    }
+    checkBoardIsFull(board) {
+        for (let i = 0; i <= 18; i++) {
+            for (let j = 0; j <= 18; j++) {
+                if (!board[i][j]) {
+                    return false;
                 }
-                this.statuses[status] = true;
+            }
+        }
+        return true;
+    },
+    updateStatus() {
+        for (status in this.statuses) {
+            // we should not need to update these if we enforce
+            // specific behaviour when they become true
+            if (status === "isFull") {
+                this.statuses[status] = checkBoardIsFull(this.board);
+
             } else {
                 this.statuses[status] = server.statuses[status];
             }
@@ -224,8 +135,8 @@ const Game = {
         this.colms.push(this.colm);
     
     },
-    getOppositeColor() {
-        return (this.player.color === "B" ? "W" : "B");
+    getOppositeColor(color) {
+        return (color === "B" ? "W" : "B");
     },
     switchPlayer() {
         this.player.color = getOppositePlayer();
