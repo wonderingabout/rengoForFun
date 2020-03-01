@@ -97,8 +97,8 @@ const Game = {
     
     },
     switchPlayer() {
+        this.player.oppositeColor = this.player.color;
         this.player.color = getOppositePlayer(this.player.color);
-        this.player.oppositeColor = getOppositeColor(this.player.color);
     },
     playGame() {
         createBoard();
@@ -192,7 +192,7 @@ function getNewGroup(x, y, gameBoard) {
 }
 
 // using recursion:
-// example and initial code are provided by @Dorus: https://github.com/Dorus
+// example and initial recursion code are provided by @Dorus: https://github.com/Dorus
 // inspired on https://en.m.wikipedia.org/wiki/Flood_fill
 /*  input (gameBoard):
 
@@ -233,6 +233,16 @@ function fill(x, y, gameBoard, group) {
     fill(x - 1, y    , gameBoard, group);
 }
 
+function getAdjacentValidStones(line, colm) {
+    // get all adjacent stones coordinates in array format,
+    // minus the invalid ones
+    return [ [line, colm - 1],
+             [line, colm + 1],
+             [line - 1, colm],
+             [line + 1, colm] 
+           ].filter( ([l, c]) => [l, c].every( !checkLineColmIsNotValid(l, c) ) );
+}
+
 function getGroup(x, y, gameBoard) {
     // check if there is no stone (hence no group) in that position
     if (!gameBoard[x][y]) {
@@ -246,6 +256,7 @@ function getGroup(x, y, gameBoard) {
 }
 
 function checkGroupIsCapturable(group, line, colm) {
+    // TODO: need to add ko check
     if (group.liberties.lines.length === 1 &&
         group.liberties.lines[0] === line &&
         group.liberties.colms[0] === colm) {
@@ -262,16 +273,6 @@ function removeGroup(group, board) {
         const colms = group.colms;
         board[lines[i]][colms[i]] = null;
     }
-}
-
-function getAdjacentValidStones(line, colm) {
-    // get all adjacent stones coordinates in array format,
-    // minus the invalid ones
-    return [ [line, colm - 1],
-             [line, colm + 1],
-             [line - 1, colm],
-             [line + 1, colm] 
-           ].filter( ([l, c]).every( !checkLineColmIsNotValid(l, c) ) );
 }
 
 function captureCapturableNearbyGroups(board, playerColor, playerOppositeColor, captures, line, colm) {
