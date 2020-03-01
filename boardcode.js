@@ -81,10 +81,10 @@ const Game = {
         ....
 
     */
-    fill(x, y, color, oppositeColor, gameBoard, group) {
+    fill(x, y, gameBoard, group) {
         if (this.checkLineColmIsNotValid(x, y)) return; // check if stone is out of board edges
 
-        if (gameBoard[x][y] === oppositeColor) return; // check if stone is not part of our group (opposite color)
+        if (gameBoard[x][y] === group.oppositeColor) return; // check if stone is not part of our group (opposite color)
         if (!gameBoard[x][y]) {
             group.board[x][y] = "L"; // liberty of the group (empty stone)
             group.liberties.lines.push(x);
@@ -92,17 +92,17 @@ const Game = {
             return;
         }
 
-        // else gameBoard[x][y] === color, do we want to add it ?
-        if (group.board[x][y] === color || group.board[x][y] === "L") return; // check if we have done this spot before
+        // else gameBoard[x][y] === group.color, do we want to add it ?
+        if (group.board[x][y] === group.color || group.board[x][y] === "L") return; // check if we have done this spot before
 
-        group.board[x][y] = color; // mark group.board spot as done (our stone color),
+        group.board[x][y] = group.color; // mark group.board spot as done (our group color),
         group.lines.push(x); // keep track of all our group stone coordinates
         group.colms.push(y);
         // then check the leaves of that marked stone of our group
-        fill(x    , y + 1, color, oppositeColor, gameBoard, group);
-        fill(x    , y - 1, color, oppositeColor, gameBoard, group);
-        fill(x + 1, y    , color, oppositeColor, gameBoard, group);
-        fill(x - 1, y    , color, oppositeColor, gameBoard, group);
+        fill(x    , y + 1, gameBoard, group);
+        fill(x    , y - 1, gameBoard, group);
+        fill(x + 1, y    , gameBoard, group);
+        fill(x - 1, y    , gameBoard, group);
     },
     getGroup(x, y, gameBoard) {
         // check if there is no stone (hence no group) in that position
@@ -111,9 +111,7 @@ const Game = {
         }
         const group = this.getNewGroup(x, y, gameBoard);
 
-        const color = group.color;
-        const oppositeColor = this.getOppositeColor(color);
-        this.fill(x, y, color, oppositeColor, gameBoard, group);
+        this.fill(x, y, gameBoard, group);
         return group;
     },
     assignGroup() {
