@@ -5,6 +5,7 @@
 
 const Game = {
     player: { color: "B",
+              oppositeColor: "W",
               players: [],
               blackPlayers: [],
               whitePlayers: [],
@@ -41,18 +42,19 @@ const Game = {
                 W: []
               },
     playCaptureGroup() {
-        removeGroup(this.group, this.board);
-        this.captures[group.oppositeColor].push(groupLength);
-        this.captures[group.color].push(0);
-        this.board[this.line][this.colm] = this.player.color;
+        captureGroup(this.board, this.group, this.player.color,
+                     this.captures, this.line, this.colm);
     },
-    fakeCaptureGroup() {
+    fakeCaptureGroup(board, group) {
         const fakeBoard = { ...this.board };
         removeGroup(this.group, fakeBoard);
+        const fakeCaptures = { ...this.captures };
+        fakeBoard[this.line][this.colm] = this.player.color;
     },
-    checkSnapback() {
-        //const fakeCapture = ......................
-        return ((this.captures.length - 1) !== fakeCapture);
+    checkSnapbackPosition() {
+        // check if next player can capture the stone that captured a stone,
+        // with a different number of captures for both players
+        
     },
     checkSuicide() {
         // return true if the move is played in the last liberty of the group
@@ -96,9 +98,10 @@ const Game = {
     },
     switchPlayer() {
         this.player.color = getOppositePlayer(this.player.color);
+        this.player.oppositeColor = getOppositeColor(this.player.color);
     },
     playGame() {
-        this.createBoard();
+        createBoard();
 
         while (!this.gameState.values.some( (bool) => Boolean(bool)) ) {
             this.fetchLineColm(server);
@@ -142,6 +145,9 @@ const Game = {
     },
     uploadGameToServer(server) {
         // once the game has ended, upload it to server
+    },
+    showBoardMsg(msg, server) {
+        // post msg through server API
     }
 };
 
@@ -258,6 +264,37 @@ function removeGroup(group, board) {
     }
 }
 
+function getAdjacentValidStones(line, colm) {
+    // get all adjacent stones coordinates in array format,
+    // minus the invalid ones
+    return [ [line, colm - 1],
+             [line, colm + 1],
+             [line - 1, colm],
+             [line + 1, colm] 
+           ].filter( ([l, c]).every( !checkLineColmIsNotValid(l, c) ) );
+}
+
+function captureCapturableNearbyGroups(board, playerColor, playerOppositeColor, captures, line, colm) {
+    const adjacentStones = getAdjacentStones(line, colm);
+    let isCaptured = false;
+    for ([l, c] of adjacentStones) {
+        let linesCaptured = 0;
+        let colmsCaptured = 0;
+        let group = getGroup(l, c, board);
+        if (checkGroupIsCapturable(group, l, c)) {
+            removeGroup(group, board);
+            linesCaptured = linesCaptured + group.lines.length;
+            colmsCaptured = colmsCaptured + group.colms.length;
+            isCaptured = true;
+        }
+    }
+    if (isCaptured) {
+        board[line][colm] = playerColor;
+        captures[playerColor].push(linesCaptured);
+        captures[playerOppositeColor].push(colmsCaptured);
+    }
+}
+
 // TODO remaining:
 
 function checkBoardIsFull(board) {
@@ -273,8 +310,4 @@ function checkBoardIsFull(board) {
 
 function getOppositeColor(color) {
     return (color === "B" ? "W" : "B");
-}
-
-function showBoardMsg(msg, server) {
-    // post msg through server API
 }
