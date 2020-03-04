@@ -1,11 +1,12 @@
-// go game server:
+// go game engine (rengo)
+// rules: "chinese"
 
 "use strict";
 // make a class later
 
 const Game = {
-    player: { color: "B",
-              oppositeColor: "W",
+    player: { color: "",
+              oppositeColor: "",
               players: [],
               blackPlayers: [],
               whitePlayers: [],
@@ -15,54 +16,140 @@ const Game = {
               previous: [],
               twoAgo:   []
             },
-    createNewBoard() {
-        this.boards.current = getNewBoard();
-    },
     line: null, // ex: 4
     colm: null, // ex: 3
     move: "", // ex: "R16"
-    lines: [],
-    colms: [],
-    moves: [],
+    logs: { turn: 0,
+            played:   { lines: [],
+                        colms: [],
+                        moves: []
+                      },
+            captures: { "0": { lines: [],
+                               colms: [],
+                             },
+                      },
+          },
     fetchLineColm(server) {
         this.line = server.line;
         this.colm = server.colm;
     },
-    assignMove() {
-        this.move = convertLineColmToMove(this.line, this.colm);
-    },
     checkRepeatedBoardPosition() {
         return checkRepeatedBoardPositionTwoAgo(this.boards.current, this.boards.twoAgo);
     },
-    assignGroup() {
-        this.group = getGroup(this.line, this.colm, this.boards.current);
+    fake: { board: [],
+            line: 0,
+            colm: 0,
+            player: {},
+            group: {},
+            logs: {},
+          },
+    // make a class fakeGame later
+    assignFakeSettings() {
+        this.fake.board = { ...this.boards.current };
+        this.fake.line = this.line;
+        this.fake.colm = this.colm;
+        this.fake.player.color = this.player.color;
+        this.fake.player.oppositeColor = this.player.oppositeColor;
+        this.fake.group = { ...this.group };
+        this.fake.logs = { ...this.logs };
     },
-    captures: { B: [],
-                W: []
-              },
-    playCaptures() {
-        captureCapturableNearbyGroups(this.boards.current, this.player.color,
-                                      this.player.oppositeColor,
-                                      this.captures, this.line, this.colm);
-    },
-    fakeCaptures() {
+    playFakeCaptures() {
         // check what would happen if we play the capture,
         // using a deep copy of the real board as well as
         // all other parameters fake copies if needed
-        const fakeBoard = { ...this.boards.current };
-        const fakeCaptures = { ...this.captures };
-        captureCapturableNearbyGroups(fakeBoard, this.player.color,
-                                      this.player.oppositeColor,
-                                      fakeCaptures, this.line, this.colm);
-        
+        this.assignFakeSettings();
+        removeCapturableNearbyGroupsAndReturnResult(this.fake.board, this.fake.player.color,
+                                                   this.fake.player.oppositeColor,
+                                                   this.fake.line, this.fake.colm,
+                                                   this.fake.logs);
+    },
+    testMoveResult: false,
+    getTestMoveIsPlayableResult() {
+        // return true if our move ends in a valid situation, else false.
+        /* checks it("does not fill already filled position"),
+                  it("does not end up in a suicide"),
+                  it("does not illicitly repeat a previous board position")
+        */    
+        if (this.boards.current[this.line][this.colm]) {
+            return { isPlayable: false,
+                     msg: `Invalid board move requested: already filled` };
+        }
+        if (this.checkSuicide()) {
+            return { isPlayable: false,
+                     message: `Invalid board move requested: move would `
+                              + `result in a suicide, not allowed` };
+        }
+        if (this.checkRepeatedBoardPositionTwoAgo()) {
+            const isSnapback = this.checkSnapback();
+            const isDoubleKo = this.checkDoubleKo();
+            const isSendTwoRepeatOne = this.checkSendTwoRepeatOne();
+
+            // ko rule
+            if (!isSnapback && !isDoubleKo && !isSendTwoRepeatOne) {
+                return { isPlayable: false,
+                         msg: `Invalid board move requested: can't recapture in a ko position` };
+            }
+            
+            // superko rule (chinese)
+            // https://senseis.xmp.net/?Superko
+
+            // avoid double ko
+            
+            // and send two repeat one
+        }
     },
     checkSnapbackPosition() {
-        // check if next player can capture the stone that captured a stone,
+        // check if next player can capture the stone group that captured a group,
         // with a different number of captures for both players
-        
+        // this just checks if a position is a snapback position
+        this.assignFakeSettings();
+        this.playFakeCaptures();
+        if (this.fake.group.liberties.lines.length === 1) {
+            // next player (switchPlayer())
+            this.fake.player.oppositeColor = this.fake.player.color;
+            this.fake.player.color = getOppositeColor(this.fake.player.color);
+            // next move
+            this.fake.line = this.fake.group.liberties.lines[0];
+            this.fake.colm = this.fake.group.liberties.colms[0];
+            
+            this.playFakeCaptures();
+            // TODO: replace with this.fake.logs, replace moveNumber with this.fake.turn, increment this.fake.turn
+            // we remove only our oppositeColorStones !!!! can make code much smarter !!
+            const currentMoveNumber = this.fake.logs.turn.length - 1;
+            // can guess player color based on turn ratherthis.fake.logs.captures.color
+            const currentTurnCapturesNumber  = this.fake.logs.captures[this.fake.logs.captures]
+                                                   .lines[currentMoveNumber];
+            const previousTurnCapturesNumber = this.fake.logs.captures[this.fake.captures.oppositeColor]
+                                                   .lines[moveNumber];
+            if (previousTurnCapturesNumber !== currentTurnCapturesNumber) {
+                return true;
+            }
+            return false;
+        }
     },
-    checkSuicide() {
-        // return true if the move is played in the last liberty of the group
+    checkDoubleKo() {
+        // add specification
+        this.assignFakeSettings();
+    },
+    checkSendTwoRepeatOne() {
+        // add specification
+        this.assignFakeSettings();
+    },
+    playMove() {
+        removeCapturableNearbyGroupsAndReturnResult(this.boards.current,
+            this.player.color, this.player.oppositeColor,
+            this.line, this.colm, this.logs);
+        this.boards[this.line][this.colm] = this.player.color;
+
+        // TODO: add logs object later
+        this.move = getConvertLineColmToMove(this.line, this.colm);
+        this.logs.moves.push(this.move);
+        this.logs.lines.push(this.line);
+        this.logs.colms.push(this.colm);
+        // log removed stones
+        this.logs
+        // no need to log our added move since we have it in lines and colms
+
     },
     score: null,
     winner: null,
@@ -93,52 +180,29 @@ const Game = {
     updateBoards() {
         this.boards.twoAgo = this.boards.previous;
         this.boards.previous = this.boards.current;
-        this.boards.current = getNewBoard();
-    },
-    playMove() {
-        this.boards.current[this.line][this.colm] = this.player.color;
-    
-        // if (capture) capture and remove dead stones and add to captures count
-        this.captureGroup();
-    
-        this.moves.push(this.move);
-        this.lines.push(this.line);
-        this.colms.push(this.colm);
-    
+        this.boards.current = getBoardNew();
     },
     switchPlayer() {
         this.player.oppositeColor = this.player.color;
         this.player.color = getOppositePlayer(this.player.color);
     },
     playGame() {
-        createBoard();
+        this.boards.current = getBoardNew();
 
-        while (!this.gameState.values.some( (bool) => Boolean(bool)) ) {
+        while (!this.gameState.values.some( (bool) => !!bool )) {
             this.fetchLineColm(server);
             if (!this.checkPass()) {
-                if (this.boards.current[this.line][this.colm]) {
-                    this.showBoardMsg(`Invalid board move requested: already filled`);
-                    continue;
-                }
-                if (this.checkSuicide()) {
-                    this.showBoardMsg(`Invalid board move requested: move would result in `
-                                      + `a suicide, not allowed`);
-                    continue;
-                }
-                if (this.checkRepeatedBoardPositionTwoAgo()) {
-                    // ko rule
-                    if (!this.checkSnapback()) {
-                        this.ShowBoardMsg(`Invalid board move requested: can't recapture in a ko position`);
-                        continue;
-                    }
-                    // superko rule (chinese)
-                    // https://senseis.xmp.net/?Superko
-                    // avoid double ko and send two repeat one
+                this.testMoveResult = this.getTestMoveIsPlayableResult();
+                if (!this.testMoveResult.isPlayable) {
+                    this.showBoardMsg(this.testMoveResult.msg);
+                    continue; // do not play invalid move, try again
                 }
                 this.playMove();
+
                 this.switchPlayer();
                 this.updateStatus();
                 this.updateBoards();
+                this.turn++;
                 continue;
             } else {
                 // pass is a move, resign is an event: handle differently
@@ -171,9 +235,7 @@ const Game = {
     }
 };
 
-Game.playGame();
-
-function convertLineColmToMove(line, colm) {
+function getConvertLineColmToMove(line, colm) {
     if (line === "pass" && colm === "pass") {
         return "pass";
     } else {
@@ -188,7 +250,7 @@ function checkLineColmIsNotValid(line, colm) {
     return [line, colm].some( (e) => e < 0 || e > 19 );
 }
 
-function getNewBoard() {
+function getBoardNew() {
     const newBoard = [];
     for (let i = 0; i <= 18; i++) {
         newBoard[i] = [];
@@ -199,19 +261,10 @@ function getNewBoard() {
     return newBoard;
 }
 
-function checkRepeatedBoardPositionTwoAgo(boardCurrent, boardTwoAgo) {
-    for (let i = 0; i <= 18; i++) {
-        for (let j = 0; j <= 18; j++) {
-            if (boardCurrent[i][j] !== boardTwoAgo[i][j]) return false;
-        }
-    }
-    return true;
-}
-
-function getNewGroup(x, y, gameBoard) {
+function getGroupNew(x, y, gameBoard) {
     return { color: gameBoard[x][y],
              oppositeColor: getOppositeColor(gameBoard[x][y]),
-             board: getNewBoard(),
+             board: getBoardNew(),
              lines: [],
              colms: [],
              liberties: { lines: [],
@@ -273,7 +326,6 @@ function getAdjacentValidStones(line, colm) {
 }
 
 function filterAdjacentStonesOppositeColor(adjacent, board, oppositeColor) {
-    // remove empty and our group color: we only capture opposite color dead stones
     return adjacent.filter( ([l, c]) => board[l][c] === oppositeColor );
 }
 
@@ -282,15 +334,14 @@ function getGroup(x, y, gameBoard) {
     if (!gameBoard[x][y]) {
         return;
     }
-    const group = this.getNewGroup(x, y, gameBoard);
+    const group = this.getGroupNew(x, y, gameBoard);
 
     fill(x, y, gameBoard, group);
     delete group.board; // we don't need it anymore, we can recreate it anytime if needed with group coordinates
     return group;
 }
 
-function checkGroupIsCapturable(group, line, colm) {
-    // TODO: need to add ko check
+function checkCurrentMoveWouldCaptureGroup(group, line, colm) {
     if (group.liberties.lines.length === 1 &&
         group.liberties.lines[0] === line &&
         group.liberties.colms[0] === colm) {
@@ -299,41 +350,58 @@ function checkGroupIsCapturable(group, line, colm) {
     return false;
 }
 
+function checkSuicide(group, line, colm) {
+    // return true if no liberty is gained after playing in the last liberty of the group
+}
+
+function checkRepeatedBoardPositionTwoAgo(boardCurrent, boardTwoAgo) {
+    for (let i = 0; i <= 18; i++) {
+        for (let j = 0; j <= 18; j++) {
+            if (boardCurrent[i][j] !== boardTwoAgo[i][j]) return false;
+        }
+    }
+    return true;
+}
+
 function removeGroup(group, board) {
     // return the passed board with all stones of dead group removed, 
     // do not play our move
-    for (i in [...Array(group.lines.length)]) {
+    for (i = 0; i <= group.lines.length; i++) {
         const lines = group.lines;
         const colms = group.colms;
         board[lines[i]][colms[i]] = null;
     }
 }
 
-function captureCapturableNearbyGroups(board, playerColor, playerOppositeColor, captures, line, colm) {
+function removeCapturableNearbyGroupsAndReturnResult(board, playerColor, playerOppositeColor, line, colm, captures) {
     const adjacentValid = getAdjacentStones(line, colm);
-    const adjacentOppositeColor = filterAdjacentStonesOppositeColor(adjacentValid,
-                                  board, playerOppositeColor);
-    let isCaptured = false;
+    // remove empty and our group adjacent colors: we only capture oppositeColor dead stones
+    const adjacentOppositeColor = filterAdjacentStonesOppositeColor(adjacentValid, board,
+                                                                    playerOppositeColor);
     for ([l, c] of adjacentOppositeColor) {
         let linesCaptured = 0;
         let colmsCaptured = 0;
         let group = getGroup(l, c, board);
-        if (checkGroupIsCapturable(group, l, c)) {
-            removeGroup(group, board);
-            linesCaptured = linesCaptured + group.lines.length;
-            colmsCaptured = colmsCaptured + group.colms.length;
-            isCaptured = true;
+        if (checkCurrentMoveWouldCaptureGroup(group, l, c)) {
+            if (!checkSuicide(group, l, c)) {
+                // remove dead group
+                removeGroup(group, board);
+                linesCaptured = linesCaptured + group.lines.length;
+                colmsCaptured = colmsCaptured + group.colms.length;
+                isCaptured = true;
+            } else {
+                this.showBoardMsg(`Playing in last liberty of the group, not allowed`)
+                return true;
+            }
         }
     }
-    if (isCaptured) {
-        board[line][colm] = playerColor;
-        captures[playerColor].push(linesCaptured);
-        captures[playerOppositeColor].push(colmsCaptured);
-    }
+    captures[playerColor].lines.push(linesCaptured);
+    captures[playerColor].lines.push(colmsCaptured);
+    captures[playerOppositeColor].lines.push(0);
+    captures[playerOppositeColor].lines.push(0);
 }
 
 // TODO remaining:
-
 function checkBoardIsFull(board) {
     for (let i = 0; i <= 18; i++) {
         for (let j = 0; j <= 18; j++) {
