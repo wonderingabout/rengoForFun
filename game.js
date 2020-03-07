@@ -8,30 +8,37 @@
 ///////////////////
 
 class Game {
-    constructor(width, height, handicap, players) {
+    constructor(width, height, handicap, komi, playersB, playersW) {
         this.outputs =  { width,
                           height,
                           handicap,
-                          players,
+                          komi,
+                          queues:  { B: playersB,
+                                     W: playersW 
+                                   },
                           line:   null, // ex: 4
                           colm:   null, // ex: 3
                           move:   "",   // ex: "R16"
+                          gtp:    "",   // ex: "jg" TODO
                         };
         this.boards =   { game:     [],
                           previous: [],
                           twoAgo:   []
                         },
         this.inputs =   { turn: 0,
-                          currentPlayer: '',
-                          playingOrder: [],
-                          colors:   { color: 'B',
-                                      opponent: 'W'
-                                    },
+                          queues:  { current:  [],
+                                     opponent: []
+                                   },
+                          currentPlayer: "",
+                          colors:  { color: 'B',
+                                     opponent: 'W'
+                                   },
                           testMoveResult: false
                         };
         this.logs =     { played:  { lines:   [],
                                      colms:   [],
                                      moves:   [],
+                                     gtps:    [],
                                      players: []
                                    },
                           removed: { "0": { lines: [],
@@ -59,18 +66,17 @@ class Game {
         }
         return newBoard;
     }
-    getPlayingOrder() {
-        // play alternatively no matter what the player number is on each side
-        const lengthB = this.outputs.players.B.length;
-        const lengthW = this.outputs.players.W.length;
-        
+    loadColors() {
+        this.inputs.colors.color = this.guessCurrentColor();
+        this.inputs.colors.opponent = (this.inputs.colors.color === 'B' ? 'W' : 'B');
     }
-    checkLineColmAreNotValid() {
-        for (const [e, dimension] of [ [this.outputs.line, this.outputs.width],
-                                       [this.outputs.colm, this.outputs.height] ]) {
-            if (e < 0 || e > dimension) return false;
-        }
-        return true;
+    loadQueues() {
+        this.inputs.queues.current = this.outputs.queues[this.inputs.colors.color];
+        this.inputs.queues.opponent = this.outputs.queues[this.inputs.colors.opponent];
+    }
+    fetchLineColm(server) {
+        this.outputs.line = server.line;
+        this.outputs.colm = server.colm;
     }
     convertLineColmToMoveString() {
         if (this.outputs.line === "pass" && this.outputs.colm === "pass") {
@@ -83,10 +89,14 @@ class Game {
             this.outputs.move = `${letters[this.outputs.line]}${this.outputs.colm + 1}`;
         }
     }
-    updateOutputs(server) {
-        this.outputs.line = server.line;
-        this.outputs.colm = server.colm;
-        this.outputs.move = this.convertLineColmToMoveString();
+    convertLineColmToGtp() {
+        // convert line and colm to GTP format
+        // this.outputs.gtp
+    }
+    importNextMove() {
+        this.fetchLineColm();
+        this.convertLineColmToMoveString();
+        this.convertLineColmToGtp();
     }
     checkAlreadyFilled() {
         return this.boards.game[this.inputs.line][this.inputs.colm];
@@ -96,6 +106,13 @@ class Game {
             for (let j = 0; j < this.inputs.height; j++) {
                 if (this.boards.game[i][j] !== this.boards.twoAgo[i][j]) return false;
             }
+        }
+        return true;
+    }
+    checkLineColmAreNotValid() {
+        for (const [e, dimension] of [ [this.outputs.line, this.outputs.width],
+                                       [this.outputs.colm, this.outputs.height] ]) {
+            if (e < 0 || e > dimension) return false;
         }
         return true;
     }
@@ -130,53 +147,59 @@ class Game {
         }
     }
     playMove() {
-        this.updateOutputs();
-        const captureIsPlayable = removeCapturableNearbyGroupsAndReturnResult(this.boards.game,
-                                                                              this.inputs,
-                                                                              this.outputs,
-                                                                              this.logs);
+        removeCapturableNearbyGroupsAndReturnResult(this.boards.game, this.inputs,
+                                                    this.outputs, this.logs);
         this.boards[this.inputs.line][this.inputs.colm] = this.player.color;
-
-
-
-
-        this.logs.moves.push(this.move);
-        this.logs.lines.push(this.inputs.line);
-        this.logs.colms.push(this.inputs.colm);
-        // log removed stones
-        this.logs
-        // no need to log our added move since we have it in lines and colms
-
+    }
+    logPlayed() {
+        this.logs.played.lines.push(this.outputs.line);
+        this.logs.played.colms.push(this.outputs.colm);
+        this.logs.played.moves.push(this.outputs.move);
+        this.logs.played.gtps.push(this.outputs.gtp);
+        this.logs.played.players.push(this.inputs.currentPlayer);
     }
     updateBoards() {
         this.boards.twoAgo = this.boards.previous;
         this.boards.previous = this.boards.game;
     }
+    guessCurrentColor() {
+        if ((this.inputs.turn - this.outputs.handicap) % 2 === 0) {
+            this.inputs.colors.color = 'B';
+        }
+        this.inputs.colors.color = 'W';
+    }
     updateColors() {
         this.inputs.colors.opponent = this.players.colors.color;
-        this.inputs.colors.color = ((this.turn % 2 === 0) ? 'B' : 'W');
+        this.inputs.colors.color = guessCurrentColor();
     }
-    updatePlayers() {
-        // update players playingTurn currentPlayer
+    updateQueues() {
+        const temp = [...this.inputs.queues.opponent];
+
+        this.inputs.queues.current.push(this.inputs.queues[0]);
+        this.inputs.queues.current.shift();
+
+        this.inputs.queues.opponent = this.inputs.queues.current;
+        this.inputs.queues.current = temp;
     }
     updateInputs() {
         this.inputs.turn++;
-        this.updateColors(); // need to update turns first to get correct color
-        this.updatePlayers();
+        this.updateColors(); // need to update turn first to get correct color
+        this.updateQueues();
+        this.inputs.currentPlayer = this.inputs.queues.current[0];
+    }
+    processTurn() {
+        this.playMove();
+        this.logPlayed();
+
+        if (!this.checkPass()) {
+            this.statuses.isFull = this.checkBoardIsFull();
+        }
+        this.updateBoards();
+        this.updateInputs();
+
         this.testMoveResult = false;
-
-
-this.logs =     { played:  { lines:   [],
-                       colms:   [],
-                       moves:   [],
-                     },
-            removed: { "0": { lines: [],
-                              colms: []
-                            },
-                       num: []
-                     }
-          };
-
+        this.group = {};
+        this.fake = {};
     }
     checkPass() {
         return (this.move === "pass");
@@ -195,14 +218,35 @@ this.logs =     { played:  { lines:   [],
         return true;
     }
     playGame() {
-        this.outputs.width = server.width;
-        this.outputs.height = server.height;
         this.boards.game = this.getNewBoard();
-        this.playingOrder = this.getPlayingOrder();
-        this.currentPlayer = this.playingOrder[0];
+
+        let whiteIndex = 0;
+        for (let i = 0; i < this.outputs.handicap; i++) {
+            if (whiteIndex > this.outputs.queues.W.length - 1) {
+                whiteIndex = 0;
+            }
+            this.inputs.queues.current.push(this.outputs.queues.W[i]);
+            whiteIndex++;
+        }
+        for (i = this.inputs.queues.current.length; i > 0; i--) {
+            this.importNextMove();
+            if (this.checkAlreadyFilled()) {
+                this.showBoardMsg(`Invalid board move requested: already filled`);
+                continue;
+            }
+            this.boards.game[this.inputs.line][this.inputs.colm];
+            this.inputs.players.push(this.inputs.queue[0]);
+
+            this.inputs.turn++;
+            this.inputs.queues.current.shift();
+        }
+
+        this.loadColors(); // to get the correct queues, load colors first
+        this.loadQueues();
+        this.inputs.currentPlayer = this.inputs.queues.current[0];
 
         while (!this.gameState.values.some( (bool) => !!bool )) {
-            this.fetchLineColm(server);
+            this.importNextMove();
             if (!this.checkPass()) {
                 // Game tests
                 if (this.checkAlreadyFilled()) {
@@ -215,11 +259,7 @@ this.logs =     { played:  { lines:   [],
                     this.showBoardMsg(this.testMoveResult.msg);
                     continue; // do not play invalid move, try again
                 }
-                this.playMove();
-
-                this.statuses.isFull = this.checkBoardIsFull();
-                this.updateBoards();
-                this.updateInputs();
+                this.processTurn();
                 continue;
             } else {
                 // pass is a move, resign is an event: handle differently
@@ -232,6 +272,7 @@ this.logs =     { played:  { lines:   [],
                     }
                     continue;
                 }
+                this.processTurn();
                 continue;
             }
         }
@@ -279,7 +320,7 @@ class Group {
                                colms: []
                              };
             this.fill(this.outputs.line, this.outputs.colm);
-            delete this.boards; // cleanup
+            delete this.boards.group; // cleanup
         } else {
             return;
         }
@@ -330,9 +371,8 @@ class Group {
 
         // else this.boards.GAME[line][colm] === this.outputs.colors.color,
         // do we want to add it to our GROUP board?
-        if ((this.boards.group[line][colm] === this.outputs.colors.color) ||
-            (this.boards.group[line][colm] === 'L')) {
-            return; // not if we have already done this spot before
+        if (this.boards.group[line][colm]) {
+            return; // not if we have already done this spot before ("our color" or "L")
         }
 
         // all good, we can add this new stone in our group
@@ -383,7 +423,7 @@ class FakeGame {
         if (this.fake.group.liberties.lines.length === 1) {
             // next player (switchPlayer())
             this.fake.player.opponentColor = this.fake.player.color;
-            this.fake.player.color = getOpponentColor(this.fake.player.color);
+            this.fake.player.color = switchColor(this.fake.player.color);
             // next move
             this.fake.inputs.line = this.fake.group.liberties.lines[0];
             this.fake.inputs.colm = this.fake.group.liberties.colms[0];
@@ -470,7 +510,3 @@ function removeCapturableNearbyGroupsAndReturnResult(board, outputs, inputs, log
     captures[playerOpponentColor].lines.push(0);
     captures[playerOpponentColor].lines.push(0);
 }
-
-function getOpponentColor(color) {
-    return (color === 'B' ? 'W' : 'B');
-} // TODO: guess player color based on turn number %2 or not
