@@ -203,7 +203,7 @@ class Game {
             let rowsCaptured = 0;
             const grp = new Group(c, r, this.boards.game, this.outputs.width, this.outputs.height,
                                   this.outputs.colors, this.getNewBoard, this.checkColmRowAreNotValid);
-            if (this.checkMoveWouldCaptureGroup(grp, c, r)) {
+            if (grp && this.checkMoveWouldCaptureGroup(grp, c, r)) {
                 // remove dead group
                 colmsCaptured = colmsCaptured + grp.colms.length;
                 rowsCaptured = rowsCaptured + grp.rows.length;
@@ -378,8 +378,8 @@ class FakeGame {
         this.logs = { ...logs };
 
         this.tests = { result: tests.result };
-        for (testMethod in testMethods) {
-            this[testMethod] = testMethods[testMethod];
+        for (testMethod in tests.methods) {
+            this[testMethod] = tests.methods[testMethod];
         }
         this.tests = tests;
         // check what would happen if we play the capture,
