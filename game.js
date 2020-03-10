@@ -19,7 +19,7 @@ class Game {
                           colm:   null, // ex: 4
                           row:    null, // ex: 3
                           move:   "",   // ex: "R16"
-                          sgf:    "",   // ex: "jg" TODO, see https://en.wikipedia.org/wiki/Smart_Game_Format
+                          sgf:    "",   // ex: "jg"
                         };
         this.boards =   { game:     [],
                           previous: [],
@@ -37,7 +37,7 @@ class Game {
         this.logs =     { played:  { colms:   [],
                                      rows:    [],
                                      moves:   [],
-                                     gtps:    [],
+                                     sgfs:    [],
                                      players: []
                                    },
                           removed: { "0": { colms: [],
@@ -50,7 +50,7 @@ class Game {
         this.tests =    { methods: { getNewBoard: this.getNewBoard,
                                      checkColmRowAreNotValid: this.checkColmRowAreNotValid,
                                      getAdjacentValidStones: this.getAdjacentValidStones,
-                                     filterAdjacentStonesOpponent: this.filterAdjacentStonesOpponent,
+                                     filterAdjacentStonesTarget: this.filterAdjacentStonesTarget,
                                      checkMoveWouldCaptureGroup: this.checkMoveWouldCaptureGroup,
                                      removeGroup: this.removeGroup,
                                      removeCapturableNearbyGroups: this.removeCapturableNearbyGroups,
@@ -91,7 +91,7 @@ class Game {
         this.outputs.row = server.row;
     }
     convertColmRowToMoveString() {
-        if (this.outputs.colm === "pass" && this.outputs.row === "pass") {
+        if (this.outputs.colm === "pass") {
             this.outputs.move = "pass";
             return;
         } else {
@@ -101,14 +101,20 @@ class Game {
             this.outputs.move = `${letters[this.outputs.colm]}${this.outputs.row + 1}`;
         }
     }
-    convertColmRowToGtp() {
-        // convert colm and row to GTP format
-        // this.outputs.gtp
+    convertColmRowToSgfFormat() {
+        if (this.outputs.colm === "pass") {
+            this.outputs.sgf = '';
+        } else {
+            const sgfLetters = ['a', 'b', 'c', 'd', 'e', 'f', 'g',
+                                'h', 'i', 'j', 'k', 'l', 'm', 'n',
+                                'o', 'p', 'q', 'r', 's', 't'];
+            this.outputs.sgf = `${sgfLetters[this.outputs.colm]}${sgfLetters[this.outputs.row]}`;
+        }
     }
     importNextMove() {
         this.fetchColmRow();
         this.convertColmRowToMoveString();
-        this.convertColmRowToGtp();
+        this.convertColmRowToSgfFormat();
     }
     checkAlreadyFilled() {
         return this.boards.game[this.inputs.colm][this.inputs.row];
@@ -173,8 +179,8 @@ class Game {
                  [this.inputs.colm + 1, this.inputs.row    ] 
                 ].filter( ([c, r]) => [c, r].every( !this.checkColmRowAreNotValid(c, r) ) );
     }
-    filterAdjacentStonesOpponent(adjacent) {
-        return adjacent.filter( ([c, r]) => this.boards.game[c][r] === this.inputs.colors.opponent );
+    filterAdjacentStonesTarget(adjacent, target) {
+        return adjacent.filter( ([c, r]) => this.boards.game[c][r] === this.inputs.colors[target] );
     }
     checkMoveWouldCaptureGroup(grp, c, r) {
         if (grp.liberties.colms.length === 1 &&
@@ -196,7 +202,7 @@ class Game {
     removeCapturableNearbyGroups() {
         const adjacentValid = this.getAdjacentValidStones();
         // remove empty and our group adjacent colors: we only capture opponent dead stones
-        const adjacentOpponent = this.filterAdjacentStonesOpponent(adjacentValid);
+        const adjacentOpponent = this.filterAdjacentStonesTarget(adjacentValid, "opponent");
 
         for ([c, r] of adjacentOpponent) {
             let colmsCaptured = 0;
@@ -220,7 +226,7 @@ class Game {
         this.logs.played.colms.push(this.outputs.colm);
         this.logs.played.rows.push(this.outputs.row);
         this.logs.played.moves.push(this.outputs.move);
-        this.logs.played.gtps.push(this.outputs.gtp);
+        this.logs.played.sgfs.push(this.outputs.sgf);
         this.logs.played.players.push(this.inputs.currentPlayer);
     }
     updateBoards() {
@@ -381,20 +387,31 @@ class FakeGame {
         for (testMethod in tests.methods) {
             this[testMethod] = tests.methods[testMethod];
         }
-        this.tests = tests;
         // check what would happen if we play the capture,
         // using a deep copy of the real board as well as
         // all other parameters fake copies if needed
     }
-
     checkSuicide() {
-        // return true if no liberty is gained after playing in the last liberty of the group
-        // TODO
+        // return true if no liberty is gained after playing in
+        // the last liberty of the group
+        this.removeCapturableNearbyGroups();
+        this.group = new Group(this.outputs.colm, this.outputs.row,
+                               this.boards.current, this.outputs.width,
+                               this.outputs.height, this.outputs.colors,
+                               this.getNewBoard, this.checkColmRowAreNotValid);
+        if (this.group.liberties.length === 1 &&
+            this.group.liberties.colms[0] === this.outputs.colm &&
+            this.group.liberties.rows[0] === this.outputs.row) {
+            return true;
+        }
+        return false;
     }
     checkSnapbackPosition() {
         // check if next player can capture the stone group that captured a group,
         // with a different number of captures for both players
         // this just checks if a position is a snapback position
+
+        // TODO REWRITE
         /*this.removeCapturableNearbyGroups();
         if (this.fake.group.liberties.colms.length === 1) {
             // next player (switchPlayer())
@@ -417,7 +434,8 @@ class FakeGame {
                 return true;
             }
             return false;
-        } TODO rewrite this*/
+        }
+        */
     }
     checkSendTwoRepeatOne() {
         // add specification
@@ -430,7 +448,7 @@ class FakeGame {
 
 class Group {
     constructor(colm, row, gameBoard, width, height, colors, getNewBoard, checkColmRow) {
-        if (gameBoard[x][y]) {
+        if (gameBoard[colm][row]) {
             // check if there is no stone (hence no group) in that position
             this.outputs =   { colm,
                                row,
