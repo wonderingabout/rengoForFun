@@ -42,9 +42,9 @@ class Game {
                                    },
                           removed: { "0": { colms: [],
                                             rows:  []
-                                          },
-                                     num: []
+                                          }
                                    },
+                          totalCapturesForPlayer: [],
                           sgf: ""
                         };
         this.tests =    { methods: { getNewBoard: this.getNewBoard,
@@ -53,6 +53,7 @@ class Game {
                                      filterAdjacentStonesTarget: this.filterAdjacentStonesTarget,
                                      checkMoveWouldCaptureGroup: this.checkMoveWouldCaptureGroup,
                                      removeGroup: this.removeGroup,
+                                     updateTotalCapturesForPlayer: this.updateTotalCapturesForPlayer,
                                      removeCapturableNearbyGroups: this.removeCapturableNearbyGroups,
                                    },
                           result: false
@@ -141,7 +142,8 @@ class Game {
         */
 
         const testSuicide = new FakeGame();
-        if (testSuicide.checkSuicide().test.result) {
+        testSuicide.checkSuicide();
+        if (testSuicide.tests.result) {
             return { isPlayable: false,
                      message: `Invalid board move requested: move would `
                               + `result in a suicide, not allowed` };
@@ -150,11 +152,14 @@ class Game {
 
         if (this.checkRepeatedBoardPositionTwoAgo()) {
             const testSnapbackPosition = new FakeGame();
+            testSnapbackPosition.checkSnapbackPosition();
+
             const testSendTwoRepeatOne = new FakeGame();
+            testSendTwoRepeatOne.checkSendTwoRepeatOne();
     
             // ko rule
-            if (!testSnapbackPosition.checkSnapbackPosition().tests.result &&
-                !testSendTwoRepeatOne.checkSendTwoRepeatOne().tests.result) {
+            if (!testSnapbackPosition.tests.result &&
+                !testSendTwoRepeatOne.tests.result) {
                 return { isPlayable: false,
                          msg: `Invalid board move requested: can't recapture in a ko position` };
             }
@@ -177,7 +182,7 @@ class Game {
                  [this.inputs.colm    , this.inputs.row + 1],
                  [this.inputs.colm - 1, this.inputs.row    ],
                  [this.inputs.colm + 1, this.inputs.row    ] 
-                ].filter( ([c, r]) => [c, r].every( !this.checkColmRowAreNotValid(c, r) ) );
+               ].filter( ([c, r]) => [c, r].every( !this.checkColmRowAreNotValid(c, r) ) );
     }
     filterAdjacentStonesTarget(adjacent, target) {
         return adjacent.filter( ([c, r]) => this.boards.game[c][r] === this.inputs.colors[target] );
@@ -199,6 +204,15 @@ class Game {
             this.logs.removed[this.inputs.turn].rows.push(grp.rows[i]);
         }
     }
+    updateTotalCapturesForPlayer() {
+        if (this.inputs.turn < 2) {
+            this.logs.totalCapturesForPlayer.push(this.inputs.removed[this.inputs.turn].colms);
+        }
+        const twoAgoCapturesNum = this.inputs.removed[this.inputs.turn - 2].colms.length - 1;
+        const currCapturesNum = this.inputs.removed[this.inputs.turn].colms.length - 1;
+        const total = twoAgoCapturesNum + currCapturesNum;
+        this.logs.totalCapturesForPlayer.push(total);
+    }
     removeCapturableNearbyGroups() {
         const adjacentValid = this.getAdjacentValidStones();
         // remove empty and our group adjacent colors: we only capture opponent dead stones
@@ -216,13 +230,15 @@ class Game {
                 this.removeGroup(grp);
             }
         }
-        this.logs.removed[this.inputs.turn].num = colmsCaptured;
+        this.updateTotalCapturesForPlayer();
     }
+    // TODO: try to think of an optimization so that we dont
+    // again already tested moves
     playMove() {
         removeCapturableNearbyGroups();
         this.boards[this.inputs.colm][this.inputs.row] = this.player.color;
     }
-    logPlayed() {
+    updateLogPlayed() {
         this.logs.played.colms.push(this.outputs.colm);
         this.logs.played.rows.push(this.outputs.row);
         this.logs.played.moves.push(this.outputs.move);
@@ -254,16 +270,14 @@ class Game {
     }
     createNextRemovedLogs() {
         if (!this.logs.removed[this.inputs.turn]) {
-            this.logs.removed[this.inputs.turn] = { [this.inputs.turn]: { colms: [],
-                                                                          rows:  []
-                                                                        },
-                                                                        num: []
+            this.logs.removed[this.inputs.turn] = { colms: [],
+                                                    rows:  []
                                                   };
         }
     }
     processTurn() {
         this.playMove();
-        this.logPlayed();
+        this.updateLogPlayed();
 
         if (!this.checkPass()) {
             this.statuses.isFull = this.checkBoardIsFull();
@@ -308,7 +322,7 @@ class Game {
                 continue;
             }
             this.boards.game[this.inputs.colm][this.inputs.row];
-            this.logPlayed();
+            this.updateLogPlayed();
 
             this.inputs.turn++;
             this.inputs.queues.current.shift();
