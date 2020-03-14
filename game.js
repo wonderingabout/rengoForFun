@@ -16,10 +16,9 @@ class Game {
                           queues:  { B: playersB,
                                      W: playersW 
                                    },
-                          colm:   null, // ex: 4
-                          row:    null, // ex: 3
-                          move:   "",   // ex: "R16"
-                          sgf:    "",   // ex: "jg"
+                          colm:   null, // exs:   4  ,  16
+                          row:    null, // exs:   3  ,  17
+                          move:   ""    // exs: "dc" , "pq"
                         };
         this.boards =   { game:     [],
                           previous: [],
@@ -32,23 +31,20 @@ class Game {
                           currentPlayer: "",
                           colors:  { color:    'B',
                                      opponent: 'W'
-                                   },
+                                   }
                         };
         this.logs =     { played:  { colms:   [],
                                      rows:    [],
                                      moves:   [],
-                                     sgfs:    [],
                                      players: []
                                    },
-                          removed: { "0": { colms: [],
-                                            rows:  []
-                                          }
-                                   },
+                          removed: [ [], // colms captured at turn index
+                                     []  // rows
+                                   ],
                           totalCapturesForPlayer: [],
-                          sgf: ""
                         };
         this.tests =    { methods: { getNewBoard: this.getNewBoard,
-                                     checkColmRowAreNotValid: this.checkColmRowAreNotValid,
+                                     checkColmRowAreValid: this.checkColmRowAreValid,
                                      getAdjacentValidStones: this.getAdjacentValidStones,
                                      filterAdjacentStonesTarget: this.filterAdjacentStonesTarget,
                                      checkMoveWouldCaptureGroup: this.checkMoveWouldCaptureGroup,
@@ -91,31 +87,20 @@ class Game {
         this.outputs.colm = server.colm;
         this.outputs.row = server.row;
     }
-    convertColmRowToMoveString() {
-        if (this.outputs.colm === "pass") {
-            this.outputs.move = "pass";
-            return;
+    convertColmRowToMove() {
+        if (this.outputs.colm === '') {
+            this.outputs.move = '';
         } else {
-            const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G',
-                             'H', 'I', 'J', 'K', 'L', 'M', 'N',
-                             'O', 'P', 'Q', 'R', 'S', 'T'];
-            this.outputs.move = `${letters[this.outputs.colm]}${this.outputs.row + 1}`;
-        }
-    }
-    convertColmRowToSgfFormat() {
-        if (this.outputs.colm === "pass") {
-            this.outputs.sgf = '';
-        } else {
-            const sgfLetters = ['a', 'b', 'c', 'd', 'e', 'f', 'g',
-                                'h', 'i', 'j', 'k', 'l', 'm', 'n',
-                                'o', 'p', 'q', 'r', 's', 't'];
-            this.outputs.sgf = `${sgfLetters[this.outputs.colm]}${sgfLetters[this.outputs.row]}`;
+            const index_a = "a".codePointAt(0);
+            const row =  String.fromCodePoint(index_a + this.outputs.colm);
+            const colm = String.fromCodePoint(index_a + this.outputs.row);
+            this.outputs.move = `${row}${colm}`;
+            // "aa" to "ss"
         }
     }
     importNextMove() {
         this.fetchColmRow();
-        this.convertColmRowToMoveString();
-        this.convertColmRowToSgfFormat();
+        this.convertColmRowToMove();
     }
     checkAlreadyFilled() {
         return this.boards.game[this.inputs.colm][this.inputs.row];
@@ -128,10 +113,10 @@ class Game {
         }
         return true;
     }
-    checkColmRowAreNotValid() {
-        for (const [e, dimension] of [ [this.outputs.colm, this.outputs.width],
-                                       [this.outputs.row, this.outputs.height] ]) {
-            if (e < 0 || e > dimension) return false;
+    checkColmRowAreValid() {
+        for (const [e, max] of [ [this.outputs.colm, this.outputs.width],
+                                 [this.outputs.row, this.outputs.height] ]) {
+            if (e < 0 || e > max - 1) return false;
         }
         return true;
     }
@@ -182,7 +167,7 @@ class Game {
                  [this.inputs.colm    , this.inputs.row + 1],
                  [this.inputs.colm - 1, this.inputs.row    ],
                  [this.inputs.colm + 1, this.inputs.row    ] 
-               ].filter( ([c, r]) => [c, r].every( !this.checkColmRowAreNotValid(c, r) ) );
+               ].filter( ([c, r]) => this.checkColmRowAreValid(c, r) );
     }
     filterAdjacentStonesTarget(adjacent, target) {
         return adjacent.filter( ([c, r]) => this.boards.game[c][r] === this.inputs.colors[target] );
@@ -200,16 +185,16 @@ class Game {
         // do not play our move
         for (i = 0; i < grp.colms.length; i++) {
             this.boards.game[grp.colms[i]][grp.rows[i]] = null;
-            this.logs.removed[this.inputs.turn].colms.push(grp.colms[i]);
-            this.logs.removed[this.inputs.turn].rows.push(grp.rows[i]);
+            this.logs.removed[this.inputs.turn][0].push(grp.colms[i]);
+            this.logs.removed[this.inputs.turn][1].push(grp.rows[i]);
         }
     }
     updateTotalCapturesForPlayer() {
         if (this.inputs.turn < 2) {
-            this.logs.totalCapturesForPlayer.push(this.inputs.removed[this.inputs.turn].colms);
+            this.logs.totalCapturesForPlayer.push(this.inputs.removed[this.inputs.turn][0]);
         }
-        const twoAgoCapturesNum = this.inputs.removed[this.inputs.turn - 2].colms.length - 1;
-        const currCapturesNum = this.inputs.removed[this.inputs.turn].colms.length - 1;
+        const twoAgoCapturesNum = this.inputs.removed[this.inputs.turn - 2][0].length - 1;
+        const currCapturesNum = this.inputs.removed[this.inputs.turn][0].length - 1;
         const total = twoAgoCapturesNum + currCapturesNum;
         this.logs.totalCapturesForPlayer.push(total);
     }
@@ -222,7 +207,7 @@ class Game {
             let colmsCaptured = 0;
             let rowsCaptured = 0;
             const grp = new Group(c, r, this.boards.game, this.outputs.width, this.outputs.height,
-                                  this.outputs.colors, this.getNewBoard, this.checkColmRowAreNotValid);
+                                  this.outputs.colors, this.getNewBoard, this.checkColmRowAreValid);
             if (grp && this.checkMoveWouldCaptureGroup(grp, c, r)) {
                 // remove dead group
                 colmsCaptured = colmsCaptured + grp.colms.length;
@@ -242,7 +227,6 @@ class Game {
         this.logs.played.colms.push(this.outputs.colm);
         this.logs.played.rows.push(this.outputs.row);
         this.logs.played.moves.push(this.outputs.move);
-        this.logs.played.sgfs.push(this.outputs.sgf);
         this.logs.played.players.push(this.inputs.currentPlayer);
     }
     updateBoards() {
@@ -256,43 +240,42 @@ class Game {
     updateQueues() {
         const temp = [...this.inputs.queues.opponent];
 
-        this.inputs.queues.current.push(this.inputs.queues[0]);
+        this.inputs.queues.current.push(this.inputs.queues.current[0]);
         this.inputs.queues.current.shift();
-
         this.inputs.queues.opponent = this.inputs.queues.current;
+        
         this.inputs.queues.current = temp;
     }
-    updateInputs() {
+    createNewLogsRemoved() {
+        this.logs.removed[this.inputs.turn] = [ [], // colms
+                                                []  // rows
+                                              ];
+    }
+    goToNextTurn() {
         this.inputs.turn++;
+
+        this.updateBoards();
         this.updateColors(); // need to update turn first to get correct color
         this.updateQueues();
+        this.createNewLogsRemoved();
         this.inputs.currentPlayer = this.inputs.queues.current[0];
-    }
-    createNextRemovedLogs() {
-        if (!this.logs.removed[this.inputs.turn]) {
-            this.logs.removed[this.inputs.turn] = { colms: [],
-                                                    rows:  []
-                                                  };
-        }
+        this.tests.result = false;
     }
     processTurn() {
         this.playMove();
         this.updateLogPlayed();
 
+        this.goToNextTurn();
         if (!this.checkPass()) {
             this.statuses.isFull = this.checkBoardIsFull();
         }
-        this.updateBoards();
-        this.updateInputs();
-        this.createNextRemovedLogs();
-
-        this.tests.result = false;
     }
+
     checkPass() {
-        return (this.move === "pass");
+        return (this.move === '');
     }
     checkDoublePass() {
-        return (this.checkPass() && (this.moves[this.moves.length - 2] === "pass"));
+        return (this.checkPass() && (this.moves[this.moves.length - 2] === ''));
     }
     checkBoardIsFull() {
         for (let i = 0; i < this.outputs.width; i++) {
@@ -325,8 +308,10 @@ class Game {
             this.updateLogPlayed();
 
             this.inputs.turn++;
+            // do not change color until first player plays all handicap stones
             this.inputs.queues.current.shift();
             this.inputs.currentPlayer = this.inputs.queues.current[0];
+            this.createNewLogsRemoved();
         }
     }
     initializeGame() {
@@ -412,7 +397,7 @@ class FakeGame {
         this.group = new Group(this.outputs.colm, this.outputs.row,
                                this.boards.current, this.outputs.width,
                                this.outputs.height, this.outputs.colors,
-                               this.getNewBoard, this.checkColmRowAreNotValid);
+                               this.getNewBoard, this.checkColmRowAreValid);
         if (this.group.liberties.length === 1 &&
             this.group.liberties.colms[0] === this.outputs.colm &&
             this.group.liberties.rows[0] === this.outputs.row) {
@@ -480,7 +465,7 @@ class Group {
                                rows:  []
                              };
             this.getNewBoard = getNewBoard;
-            this.checkColmRowAreNotValid = checkColmRow;
+            this.checkColmRowAreValid = checkColmRow;
 
             this.fill(this.outputs.colm, this.outputs.row);
             delete this.boards; // cleanup
@@ -507,7 +492,7 @@ class Group {
             ....
 
         */
-        if (this.checkColmRowAreNotValid()) return; // check if stone is out of board edges
+        if (!this.checkColmRowAreValid()) return; // check if stone is out of board edges
         if (this.boards.game[colm][row] === this.inputs.colors.opponent) {
             return; // check if we found an opponent colored stone, not in our group
         }
