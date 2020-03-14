@@ -31,7 +31,8 @@ class Game {
                           currentPlayer: "",
                           colors:  { color:    'B',
                                      opponent: 'W'
-                                   }
+                                   },
+                          adjacentValid: []
                         };
         this.logs =     { played:  { colms:   [],
                                      rows:    [],
@@ -43,18 +44,17 @@ class Game {
                                    ],
                           totalCapturesForPlayer: [],
                         };
-        this.tests =    { methods: { getNewBoard: this.getNewBoard,
-                                     checkColmRowAreValid: this.checkColmRowAreValid,
-                                     getAdjacentValidStones: this.getAdjacentValidStones,
-                                     filterAdjacentStonesTarget: this.filterAdjacentStonesTarget,
-                                     checkMoveWouldCaptureGroup: this.checkMoveWouldCaptureGroup,
-                                     removeGroup: this.removeGroup,
-                                     updateTotalCapturesForPlayer: this.updateTotalCapturesForPlayer,
-                                     removeCapturableNearbyGroups: this.removeCapturableNearbyGroups,
-                                   },
-                          result: false
-                        };
-        this.testingMethods = [];
+        this.group = {};
+        this.tests = { getNewBoard: this.getNewBoard,
+                       checkColmRowAreValid: this.checkColmRowAreValid,
+                       getAdjacentValidStones: this.getAdjacentValidStones,
+                       filterAdjacentStones: this.filterAdjacentStones,
+                       checkMoveWouldCaptureGroup: this.checkMoveWouldCaptureGroup,
+                       removeGroup: this.removeGroup,
+                       updateTotalCapturesForPlayer: this.updateTotalCapturesForPlayer,
+                       removeCapturableNearbyGroups: this.removeCapturableNearbyGroups,
+                     };
+        this.testResult = false;
         this.statuses = { isFull: false,
                           isPlaying: false,
                           isScored: false,
@@ -95,70 +95,13 @@ class Game {
             const row =  String.fromCodePoint(index_a + this.outputs.colm);
             const colm = String.fromCodePoint(index_a + this.outputs.row);
             this.outputs.move = `${row}${colm}`;
-            // "aa" to "ss"
+            // "aa" to "ss", pass is ''
+            // see: https://en.wikipedia.org/wiki/Smart_Game_Format
         }
     }
     importNextMove() {
         this.fetchColmRow();
         this.convertColmRowToMove();
-    }
-    checkAlreadyFilled() {
-        return this.boards.game[this.inputs.colm][this.inputs.row];
-    }
-    checkRepeatedBoardPositionTwoAgo() {
-        for (let i = 0; i < this.inputs.width; i++) {
-            for (let j = 0; j < this.inputs.height; j++) {
-                if (this.boards.game[i][j] !== this.boards.twoAgo[i][j]) return false;
-            }
-        }
-        return true;
-    }
-    checkColmRowAreValid() {
-        for (const [e, max] of [ [this.outputs.colm, this.outputs.width],
-                                 [this.outputs.row, this.outputs.height] ]) {
-            if (e < 0 || e > max - 1) return false;
-        }
-        return true;
-    }
-    testMoveIsPlayable() {
-        // return true if our move ends in a valid situation, else false.
-        /* checks it("does not end up in a suicide"),
-                  it("does not illicitly repeat a previous board position")
-        */
-
-        const testSuicide = new FakeGame();
-        testSuicide.checkSuicide();
-        if (testSuicide.tests.result) {
-            return { isPlayable: false,
-                     message: `Invalid board move requested: move would `
-                              + `result in a suicide, not allowed` };
-        }
-        delete testSuicide;
-
-        if (this.checkRepeatedBoardPositionTwoAgo()) {
-            const testSnapbackPosition = new FakeGame();
-            testSnapbackPosition.checkSnapbackPosition();
-
-            const testSendTwoRepeatOne = new FakeGame();
-            testSendTwoRepeatOne.checkSendTwoRepeatOne();
-    
-            // ko rule
-            if (!testSnapbackPosition.tests.result &&
-                !testSendTwoRepeatOne.tests.result) {
-                return { isPlayable: false,
-                         msg: `Invalid board move requested: can't recapture in a ko position` };
-            }
-            
-            // superko rule (chinese)
-            // https://senseis.xmp.net/?Superko
-    
-            // avoid double ko
-            
-            // and send two repeat one
-        }
-
-        return { isPlayable: true,
-                 msg: "" };
     }
     getAdjacentValidStones() {
         // get all adjacent stones coordinates in array format,
@@ -169,8 +112,24 @@ class Game {
                  [this.inputs.colm + 1, this.inputs.row    ] 
                ].filter( ([c, r]) => this.checkColmRowAreValid(c, r) );
     }
-    filterAdjacentStonesTarget(adjacent, target) {
-        return adjacent.filter( ([c, r]) => this.boards.game[c][r] === this.inputs.colors[target] );
+    filterAdjacentStones(adjacent, targetColor) {
+        return adjacent.filter( ([c, r]) => this.boards.game[c][r] === targetColor );
+    }
+    checkAlreadyFilled() {
+        return this.boards.game[this.inputs.colm][this.inputs.row];
+    }
+    checkColmRowAreValid() {
+        for (const [e, size] of [ [this.outputs.colm, this.outputs.width],
+                                  [this.outputs.row, this.outputs.height] ]) {
+            if (e < 0 || e > size - 1) return false;
+        }
+        return true;
+    }
+    defineOurGroup() {
+        this.group = new Group(this.outputs.colm, this.outputs.row,
+                               this.boards.current, this.outputs.width,
+                               this.outputs.height, this.outputs.colors,
+                               this.getNewBoard, this.checkColmRowAreValid);
     }
     checkMoveWouldCaptureGroup(grp, c, r) {
         if (grp.liberties.colms.length === 1 &&
@@ -180,11 +139,24 @@ class Game {
         }
         return false;
     }
-    removeGroup(grp) {
+    checkNearbyGroupsWouldBeCaptured() {
+        // remove empty and our group adjacent colors: we only capture opponent dead stones
+        const adjacentOpponent = this.filterAdjacentStones(this.inputs.adjacentValid, this.inputs.colors.opponent);
+
+        for ([c, r] of adjacentOpponent) {
+            const grp = new Group(c, r, this.boards.game, this.outputs.width, this.outputs.height,
+                                  this.outputs.colors, this.getNewBoard, this.checkColmRowAreValid);
+            if (this.checkMoveWouldCaptureGroup(grp, c, r)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    removeGroup(grp, board) {
         // return the passed board with all stones of dead group removed, 
         // do not play our move
         for (i = 0; i < grp.colms.length; i++) {
-            this.boards.game[grp.colms[i]][grp.rows[i]] = null;
+            board[grp.colms[i]][grp.rows[i]] = null;
             this.logs.removed[this.inputs.turn][0].push(grp.colms[i]);
             this.logs.removed[this.inputs.turn][1].push(grp.rows[i]);
         }
@@ -198,17 +170,16 @@ class Game {
         const total = twoAgoCapturesNum + currCapturesNum;
         this.logs.totalCapturesForPlayer.push(total);
     }
-    removeCapturableNearbyGroups() {
-        const adjacentValid = this.getAdjacentValidStones();
+    removeCapturableNearbyGroups(board) {
         // remove empty and our group adjacent colors: we only capture opponent dead stones
-        const adjacentOpponent = this.filterAdjacentStonesTarget(adjacentValid, "opponent");
+        const adjacentOpponent = this.filterAdjacentStones(this.inputs.adjacentValid, this.inputs.colors.opponent);
 
         for ([c, r] of adjacentOpponent) {
             let colmsCaptured = 0;
             let rowsCaptured = 0;
-            const grp = new Group(c, r, this.boards.game, this.outputs.width, this.outputs.height,
+            const grp = new Group(c, r, board, this.outputs.width, this.outputs.height,
                                   this.outputs.colors, this.getNewBoard, this.checkColmRowAreValid);
-            if (grp && this.checkMoveWouldCaptureGroup(grp, c, r)) {
+            if (this.checkMoveWouldCaptureGroup(grp, c, r)) {
                 // remove dead group
                 colmsCaptured = colmsCaptured + grp.colms.length;
                 rowsCaptured = rowsCaptured + grp.rows.length;
@@ -217,8 +188,72 @@ class Game {
         }
         this.updateTotalCapturesForPlayer();
     }
-    // TODO: try to think of an optimization so that we dont
-    // again already tested moves
+    checkSuicide() {
+        // if our move can capture nearby groups, it can't be a suicide
+        const moveCanCapture = this.checkNearbyGroupsWouldBeCaptured();
+        if (moveCanCapture) return false;
+
+        // if our group only has one liberty left and we play in it, it is a suicide
+        if (this.group.liberties.colms.length === 1 &&
+            this.group.liberties.colms[0] === this.outputs.colm &&
+            this.group.liberties.rows[0] === this.outputs.row) {
+            return true;
+        }
+        return false;
+    }
+    checkRepeatedBoardPositionTwoAgo() {
+        for (let i = 0; i < this.inputs.width; i++) {
+            for (let j = 0; j < this.inputs.height; j++) {
+                if (this.boards.game[i][j] !== this.boards.twoAgo[i][j]) return false;
+            }
+        }
+        return true;
+    }
+    testMoveIsPlayable() {
+        if (this.checkAlreadyFilled()) {
+            return { isPlayable: false,
+                     message: `Invalid board move requested: already filled` };
+        }
+
+        this.inputs.adjacentValid = this.getAdjacentValidStones();
+        const cardinalLiberties = this.filterAdjacentStones(this.inputs.adjacentValid, '');
+
+        // no need to test our group if the move has has more than 2 cardinal liberties
+        if (cardinalLiberties.colms.length < 2) {
+            this.defineOurGroup();
+            // no need to test our group if our group has more than 2 liberties
+            // (then it cannot be suicide,
+            // nor ko a ko stone has only one liberty)
+            // TODO: handle send two repeat one exception separately
+            if (this.group.liberties.colms.length < 2) {
+                if (this.checkSuicide()) {
+                    return { isPlayable: false,
+                             message: `Invalid board move requested: move would `
+                                      + `result in a suicide, not allowed` };
+                }
+                if (this.checkRepeatedBoardPositionTwoAgo()) {
+                    // TODO: pass as little parameters as possible
+                    const testSnapback = new FakeGame();
+                    testSnapback.checkSnapbackPosition();
+                    const isSnapback = testSnapback.testResult;
+        
+                    const testSendTwoRepeatOne = new FakeGame();
+                    testSendTwoRepeatOne.checkSendTwoRepeatOne();
+                    const isSendTwoRepeatOne = testSendTwoRepeatOne.testResult;
+            
+                    // ko rule
+                    if (!isSnapback &&
+                        !isSendTwoRepeatOne) {
+                        return { isPlayable: false,
+                                 msg: `Invalid board move requested: can't recapture in a ko position` };
+                    }
+                }
+            }
+        }
+
+        return { isPlayable: true,
+                 msg: "" };
+    }
     playMove() {
         removeCapturableNearbyGroups();
         this.boards[this.inputs.colm][this.inputs.row] = this.player.color;
@@ -258,8 +293,11 @@ class Game {
         this.updateColors(); // need to update turn first to get correct color
         this.updateQueues();
         this.createNewLogsRemoved();
+        this.inputs.adjacentValid = [];
         this.inputs.currentPlayer = this.inputs.queues.current[0];
-        this.tests.result = false;
+        this.testResult = false;
+
+        this.group = {};
     }
     processTurn() {
         this.playMove();
@@ -335,14 +373,10 @@ class Game {
             this.importNextMove();
             if (!this.checkPass()) {
                 // Game tests
-                if (this.checkAlreadyFilled()) {
-                    this.showBoardMsg(`Invalid board move requested: already filled`);
-                    continue;
-                }
-                // FakeGame tests
-                this.tests.result = this.testMoveIsPlayable();
-                if (!this.tests.result.isPlayable) {
-                    this.showBoardMsg(this.tests.result.msg);
+
+                const testResult = this.testMoveIsPlayable();
+                if (!testResult.isPlayable) {
+                    this.showBoardMsg(testResult.msg);
                     continue; // do not play invalid move, try again
                 }
                 this.processTurn();
@@ -376,68 +410,39 @@ class Game {
 //////////////////////
 
 class FakeGame {
-    constructor(boards, outputs, inputs, logs, tests) {
+    constructor(boards, outputs, inputs, logs, group, tests, testResult) {
         this.boards = { ...boards };
         this.outputs = { ...outputs };
         this.inputs = { ...inputs };
         this.logs = { ...logs };
+        this.group = { ...group };
 
-        this.tests = { result: tests.result };
-        for (testMethod in tests.methods) {
-            this[testMethod] = tests.methods[testMethod];
+        this.tests = tests;
+        for (testMethod in tests) {
+            this[testMethod] = tests[testMethod];
         }
+
+        this.testResult = testResult;
         // check what would happen if we play the capture,
         // using a deep copy of the real board as well as
         // all other parameters fake copies if needed
-    }
-    checkSuicide() {
-        // return true if no liberty is gained after playing in
-        // the last liberty of the group
-        this.removeCapturableNearbyGroups();
-        this.group = new Group(this.outputs.colm, this.outputs.row,
-                               this.boards.current, this.outputs.width,
-                               this.outputs.height, this.outputs.colors,
-                               this.getNewBoard, this.checkColmRowAreValid);
-        if (this.group.liberties.length === 1 &&
-            this.group.liberties.colms[0] === this.outputs.colm &&
-            this.group.liberties.rows[0] === this.outputs.row) {
-            return true;
-        }
-        return false;
     }
     checkSnapbackPosition() {
         // check if next player can capture the stone group that captured a group,
         // with a different number of captures for both players
         // this just checks if a position is a snapback position
 
-        // TODO REWRITE
-        /*this.removeCapturableNearbyGroups();
-        if (this.fake.group.liberties.colms.length === 1) {
-            // next player (switchPlayer())
-            this.fake.player.opponentColor = this.fake.player.color;
-            this.fake.player.color = switchColor(this.fake.player.color);
-            // next move
-            this.fake.inputs.colm = this.fake.group.liberties.colms[0];
-            this.fake.inputs.row = this.fake.group.liberties.rows[0];
-            
-            this.playFakeCaptures();
-            // TODO: replace with this.fake.logs, replace moveNumber with this.fake.turn, increment this.fake.turn
-            // we remove only our opponentColorStones !!!! can make code much smarter !!
-            const currentMoveNumber = this.fake.logs.turn.length - 1;
-            // can guess player color based on turn ratherthis.fake.logs.captures.color
-            const currentTurnCapturesNumber  = this.fake.logs.captures[this.fake.logs.captures]
-                                                   .colms[currentMoveNumber];
-            const previousTurnCapturesNumber = this.fake.logs.captures[this.fake.captures.opponentColor]
-                                                   .colms[moveNumber];
-            if (previousTurnCapturesNumber !== currentTurnCapturesNumber) {
-                return true;
-            }
-            return false;
-        }
-        */
+        this.testResult = result;
     }
     checkSendTwoRepeatOne() {
-        // add specification
+        // TODO: add specification
+
+        // superko rule (chinese)
+        // https://senseis.xmp.net/?Superko
+        // avoid double ko
+        // and send two repeat one
+
+        this.testResult = result;
     }
 }
 
