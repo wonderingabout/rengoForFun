@@ -1,58 +1,155 @@
 // go game engine (rengo)
+// working on console (command-line) only for now
 // rules: "chinese"
 
 "use strict";
+
+///////////////////
+///// Settings ////
+///////////////////
+
+class Settings {
+    constructor() {
+        this.settings= {};
+
+        this.promptSettings();
+        this.promptQueues();
+        this.createGameQueue();
+    }
+    promptSettings() {
+        const settingsToAsk = [ ["width"  , 19, 1, 25],
+                                ["height" , 19, 1, 25],
+                                ["handicap", 0, 0, 18],
+                                ["komi"   ,7.5, -361, 361]
+                              ];
+        for (const [setting, deft, min, max] of settingsToAsk) {
+            let suitedDeft = deft;
+            let suitedMin  = min;
+            // beware: always ask handicap before komi, and width before height
+            if (setting === "height" && this.settings.width === 1) {
+                suitedDeft = 2;
+                suitedMin  = 2;
+            }
+            if (setting === "komi" && this.settings.handicap > 0) {
+                suitedDeft = 0.5;
+            }
+            const result = prompt(`Choose ${setting}`, suitedDeft).toFixed(1);
+            if (typeof result !== "number") {
+                console.log("Error: this is not a number, please enter a number");
+                continue;
+            }
+            if (result < min || result > max) {
+                console.log(`Error: the ${setting} specified is out of range of allowed`
+                            + `values based on already entered values.`
+                            + `\nMin is ${suitedMin}, max is ${max}`
+                            + `\nplease enter an allowed value in that range`);
+                continue;
+            }
+            this.settings[setting] = result;
+        }
+    }
+    promptQueues() {
+        this.settings.queues = {};
+        let maxPlayersPerTeam = 4;
+        for (const color of [ "black", "white"]) {
+            for (i = 0; i < maxPlayersPerTeam; i++) {
+                const player = prompt(`Please enter a player in ${color} team:`
+                + `\n (minimum players per team is 1 player,`
+                + `maximum is 4 players):`, "");
+                
+                this.settings.queues[color].push(String(player).slice(0,20));
+                if (i >= maxPlayersPerTeam) {
+                    console.log(`Max players per team is ${maxPlayersPerTeam}, ${color} team is full !`
+                                + `\nAll team players are: ${team.join(", ")}`);
+                }
+            }
+        }
+    }
+    createGameQueue() {
+        this.settings.queue = []; // game queue
+
+        let blackCurrentIndex = 0;
+        let whiteCurrentIndex = 0;
+
+        const queueFinalLength = this.settings.queues.black.length * this.settings.queues.white.length;
+        for (i = 0; i < queueFinalLength; i++) {
+            if (i > this.settings.queues.black.length - 1) blackCurrentIndex = 0;
+            if (i > this.settings.queues.white.length - 1) whiteCurrentIndex = 0;
+            
+            this.settings.queue.push(this.settings.queues.black[blackCurrentIndex],
+                                     this.settings.queues.white[whiteCurrentIndex]);
+            blackCurrentIndex++;
+            whiteCurrentIndex++;
+        }
+    }
+}
+
+///////////////////
+////// Move ///////
+///////////////////
+
+/*class Move {
+    // doing in command-line only for now
+    constructor(width, height) {
+        // assign game fixed settings
+        a = {colm:   null, // exs:   4   ,  16
+                          row:    null, // exs:   3   ,  17
+                          move:   ""  , // exs: "D3"  , "Q17"
+                          sgfF:   ""  } // exs: "dc"  , "pq"
+    }
+    convertColmRowToMove() {
+        if (this.move.colm === '') {
+            this.move.sgfF = '';
+        } else {
+            const index_a = "a".codePointAt(0);
+            const row =  String.fromCodePoint(index_a + this.move.colm);
+            const colm = String.fromCodePoint(index_a + this.move.row);
+            this.move.sgfF = `${row}${colm}`;
+            // "aa" to "ss", pass is ''
+            // see: https://en.wikipedia.org/wiki/Smart_Game_Format
+        }
+        
+    }
+    
+}*/
 
 ///////////////////
 ////// Game ///////
 ///////////////////
 
 class Game {
-    constructor(width, height, handicap, komi, playersB, playersW) {
-        this.outputs =  { width,
-                          height,
-                          handicap,
-                          komi,
-                          queues:  { B: playersB,
-                                     W: playersW 
-                                   },
-                          colm:   null, // exs:   4  ,  16
-                          row:    null, // exs:   3  ,  17
-                          move:   ""    // exs: "dc" , "pq"
-                        };
+    constructor() {
+        console.log("Welcome on javascript rengo console !!\n Have a fun and have a nice game !!");
+
+        this.settings = new Settings();
+        this.move  =    {};
         this.boards =   { game:     [],
                           previous: [],
                           twoAgo:   []
                         },
         this.inputs =   { turn: 0,
-                          queues:  { current:  [],
-                                     opponent: []
-                                   },
-                          currentPlayer: "",
-                          colors:  { color:    'B',
-                                     opponent: 'W'
-                                   },
-                          adjacentValid: []
+                          queue: [],
+                          colors:   { color:    'B',
+                                      opponent: 'W'
+                                    },
+                          adjacent: { adjacentValid: [],
+                                      adjacentOpponent: []
+                                    }
                         };
-        this.logs =     { played:  { colms:   [],
-                                     rows:    [],
-                                     moves:   [],
-                                     players: []
-                                   },
-                          removed: [ [], // colms captured at turn index
-                                     []  // rows
-                                   ],
+        this.logs =     { played:   { colms:   [],
+                                      rows:    [],
+                                      moves:   [],
+                                      players: []
+                                    },
+                          removed:  [ [], // colms captured at turn index
+                                      []  // rows
+                                    ],
                           totalCapturesForPlayer: [],
                         };
         this.group = {};
         this.tests = { getNewBoard: this.getNewBoard,
                        checkColmRowAreValid: this.checkColmRowAreValid,
-                       getAdjacentValidStones: this.getAdjacentValidStones,
-                       filterAdjacentStones: this.filterAdjacentStones,
                        checkMoveWouldCaptureGroup: this.checkMoveWouldCaptureGroup,
-                       removeGroup: this.removeGroup,
-                       updateTotalCapturesForPlayer: this.updateTotalCapturesForPlayer,
-                       removeCapturableNearbyGroups: this.removeCapturableNearbyGroups,
                      };
         this.testResult = false;
         this.statuses = { isFull: false,
@@ -67,41 +164,23 @@ class Game {
     }
     getNewBoard() {
         const newBoard = [];
-        for (i = 0; i < this.outputs.width; i++) {
-            newBoard[i] = new Array(this.outputs.height);
+        for (i = 0; i < this.settings.width; i++) {
+            newBoard[i] = new Array(this.settings.height);
         }
         return newBoard;
     }
     guessCurrentColor() {
-        this.inputs.colors.color = ((this.inputs.turn - this.outputs.handicap) % 2 === 0 ? 'B' : 'W');
+        this.inputs.colors.color = ((this.inputs.turn - this.settings.handicap) % 2 === 0 ? 'B' : 'W');
     }
     loadColors() {
         this.inputs.colors.color = this.guessCurrentColor();
         this.inputs.colors.opponent = (this.inputs.colors.color === 'B' ? 'W' : 'B');
     }
-    loadQueues() {
-        this.inputs.queues.current = this.outputs.queues[this.inputs.colors.color];
-        this.inputs.queues.opponent = this.outputs.queues[this.inputs.colors.opponent];
+    loadQueue() {
+        this.inputs.queue = this.settings.queue;
     }
-    fetchColmRow() {
-        this.outputs.colm = server.colm;
-        this.outputs.row = server.row;
-    }
-    convertColmRowToMove() {
-        if (this.outputs.colm === '') {
-            this.outputs.move = '';
-        } else {
-            const index_a = "a".codePointAt(0);
-            const row =  String.fromCodePoint(index_a + this.outputs.colm);
-            const colm = String.fromCodePoint(index_a + this.outputs.row);
-            this.outputs.move = `${row}${colm}`;
-            // "aa" to "ss", pass is ''
-            // see: https://en.wikipedia.org/wiki/Smart_Game_Format
-        }
-    }
-    importNextMove() {
-        this.fetchColmRow();
-        this.convertColmRowToMove();
+    fetchNewMove() {
+        this.move = new Move(this.settings.width, this.settings.height);
     }
     getAdjacentValidStones() {
         // get all adjacent stones coordinates in array format,
@@ -112,23 +191,24 @@ class Game {
                  [this.inputs.colm + 1, this.inputs.row    ] 
                ].filter( ([c, r]) => this.checkColmRowAreValid(c, r) );
     }
-    filterAdjacentStones(adjacent, targetColor) {
-        return adjacent.filter( ([c, r]) => this.boards.game[c][r] === targetColor );
+    filterAdjacentStones(targetColor) {
+        return this.inputs.adjacent.adjacentValid
+               .filter( ([c, r]) => this.boards.game[c][r] === targetColor );
     }
     checkAlreadyFilled() {
         return this.boards.game[this.inputs.colm][this.inputs.row];
     }
     checkColmRowAreValid() {
-        for (const [e, size] of [ [this.outputs.colm, this.outputs.width],
-                                  [this.outputs.row, this.outputs.height] ]) {
+        for (const [e, size] of [ [this.move.colm, this.settings.width],
+                                  [this.move.row, this.settings.height] ]) {
             if (e < 0 || e > size - 1) return false;
         }
         return true;
     }
     defineOurGroup() {
-        this.group = new Group(this.outputs.colm, this.outputs.row,
-                               this.boards.current, this.outputs.width,
-                               this.outputs.height, this.outputs.colors,
+        this.group = new Group(this.move.colm, this.move.row,
+                               this.boards.current, this.settings.width,
+                               this.settings.height, this.inputs.colors,
                                this.getNewBoard, this.checkColmRowAreValid);
     }
     checkMoveWouldCaptureGroup(grp, c, r) {
@@ -140,23 +220,20 @@ class Game {
         return false;
     }
     checkNearbyGroupsWouldBeCaptured() {
-        // remove empty and our group adjacent colors: we only capture opponent dead stones
-        const adjacentOpponent = this.filterAdjacentStones(this.inputs.adjacentValid, this.inputs.colors.opponent);
-
-        for ([c, r] of adjacentOpponent) {
-            const grp = new Group(c, r, this.boards.game, this.outputs.width, this.outputs.height,
-                                  this.outputs.colors, this.getNewBoard, this.checkColmRowAreValid);
+        for ([c, r] of this.inputs.adjacent.adjacentOpponent) {
+            const grp = new Group(c, r, this.boards.game, this.settings.width, this.settings.height,
+                                  this.inputs.colors, this.getNewBoard, this.checkColmRowAreValid);
             if (this.checkMoveWouldCaptureGroup(grp, c, r)) {
                 return true;
             }
         }
         return false;
     }
-    removeGroup(grp, board) {
-        // return the passed board with all stones of dead group removed, 
+    removeGroup(grp) {
+        // remove in game board all stones of dead group removed, 
         // do not play our move
         for (i = 0; i < grp.colms.length; i++) {
-            board[grp.colms[i]][grp.rows[i]] = null;
+            board[grp.colms[i]][grp.rows[i]] = undefined;
             this.logs.removed[this.inputs.turn][0].push(grp.colms[i]);
             this.logs.removed[this.inputs.turn][1].push(grp.rows[i]);
         }
@@ -170,15 +247,12 @@ class Game {
         const total = twoAgoCapturesNum + currCapturesNum;
         this.logs.totalCapturesForPlayer.push(total);
     }
-    removeCapturableNearbyGroups(board) {
-        // remove empty and our group adjacent colors: we only capture opponent dead stones
-        const adjacentOpponent = this.filterAdjacentStones(this.inputs.adjacentValid, this.inputs.colors.opponent);
-
-        for ([c, r] of adjacentOpponent) {
+    removeCapturableNearbyGroups() {
+        for ([c, r] of this.inputs.adjacent.adjacentOpponent) {
             let colmsCaptured = 0;
             let rowsCaptured = 0;
-            const grp = new Group(c, r, board, this.outputs.width, this.outputs.height,
-                                  this.outputs.colors, this.getNewBoard, this.checkColmRowAreValid);
+            const grp = new Group(c, r, this.boards.game, this.settings.width, this.settings.height,
+                                  this.inputs.colors, this.getNewBoard, this.checkColmRowAreValid);
             if (this.checkMoveWouldCaptureGroup(grp, c, r)) {
                 // remove dead group
                 colmsCaptured = colmsCaptured + grp.colms.length;
@@ -195,8 +269,8 @@ class Game {
 
         // if our group only has one liberty left and we play in it, it is a suicide
         if (this.group.liberties.colms.length === 1 &&
-            this.group.liberties.colms[0] === this.outputs.colm &&
-            this.group.liberties.rows[0] === this.outputs.row) {
+            this.group.liberties.colms[0] === this.move.colm &&
+            this.group.liberties.rows[0] === this.move.row) {
             return true;
         }
         return false;
@@ -216,7 +290,10 @@ class Game {
         }
 
         this.inputs.adjacentValid = this.getAdjacentValidStones();
-        const cardinalLiberties = this.filterAdjacentStones(this.inputs.adjacentValid, '');
+        // remove empty and our group adjacent colors: we only capture opponent dead stones
+        this.inputs.adjacentOpponent = this.filterAdjacentStones(this.inputs.colors.opponent);
+
+        const cardinalLiberties = this.filterAdjacentStones('');
 
         // no need to test our group if the move has has more than 2 cardinal liberties
         if (cardinalLiberties.colms.length < 2) {
@@ -254,15 +331,15 @@ class Game {
         return { isPlayable: true,
                  msg: "" };
     }
-    playMove() {
-        removeCapturableNearbyGroups();
+    playMove(isRemove) {
+        if (isRemove) removeCapturableNearbyGroups();
         this.boards[this.inputs.colm][this.inputs.row] = this.player.color;
-    }
-    updateLogPlayed() {
-        this.logs.played.colms.push(this.outputs.colm);
-        this.logs.played.rows.push(this.outputs.row);
-        this.logs.played.moves.push(this.outputs.move);
-        this.logs.played.players.push(this.inputs.currentPlayer);
+
+        this.logs.played.colms.push(this.move.colm);
+        this.logs.played.rows.push(this.move.row);
+        this.logs.played.moves.push(this.move.move);
+        this.logs.played.sgfF.push(this.move.sgfF);
+        this.logs.played.players.push(this.inputs.queue[0]);
     }
     updateBoards() {
         this.boards.twoAgo = this.boards.previous;
@@ -272,14 +349,13 @@ class Game {
         this.inputs.colors.opponent = this.players.colors.color;
         this.inputs.colors.color = guessCurrentColor();
     }
-    updateQueues() {
-        const temp = [...this.inputs.queues.opponent];
-
-        this.inputs.queues.current.push(this.inputs.queues.current[0]);
-        this.inputs.queues.current.shift();
-        this.inputs.queues.opponent = this.inputs.queues.current;
-        
-        this.inputs.queues.current = temp;
+    updateQueue() {
+        this.inputs.queue.push(this.inputs.queue[0]);
+        this.inputs.queue.shift();
+    }
+    createNewAdjacent() {
+        this.inputs.adjacentValid = [];
+        this.inputs.adjacentOpponent = [];
     }
     createNewLogsRemoved() {
         this.logs.removed[this.inputs.turn] = [ [], // colms
@@ -291,17 +367,15 @@ class Game {
 
         this.updateBoards();
         this.updateColors(); // need to update turn first to get correct color
-        this.updateQueues();
-        this.createNewLogsRemoved();
-        this.inputs.adjacentValid = [];
-        this.inputs.currentPlayer = this.inputs.queues.current[0];
-        this.testResult = false;
+        this.updateQueue();
 
+        this.createNewAdjacent();
+        this.createNewLogsRemoved();
         this.group = {};
+        this.testResult = false;
     }
     processTurn() {
-        this.playMove();
-        this.updateLogPlayed();
+        this.playMove(true);
 
         this.goToNextTurn();
         if (!this.checkPass()) {
@@ -316,8 +390,8 @@ class Game {
         return (this.checkPass() && (this.moves[this.moves.length - 2] === ''));
     }
     checkBoardIsFull() {
-        for (let i = 0; i < this.outputs.width; i++) {
-            for (let j = 0; j < this.outputs.height; j++) {
+        for (let i = 0; i < this.settings.width; i++) {
+            for (let j = 0; j < this.settings.height; j++) {
                 if (!this.boards.game[i][j]) {
                     return false;
                 }
@@ -328,34 +402,28 @@ class Game {
     preGame() {
         this.boards.game = this.getNewBoard();
 
-        let whiteIndex = 0;
-        for (let i = 0; i < this.outputs.handicap; i++) {
-            if (whiteIndex > this.outputs.queues.W.length - 1) {
-                whiteIndex = 0;
+        let blackIndex = 0;
+        for (let i = 0; i < this.settings.handicap; i++) {
+            if (blackIndex > this.settings.queues.black.length - 1) {
+                blackIndex = 0;
             }
-            this.inputs.queues.current.push(this.outputs.queues.W[i]);
-            whiteIndex++;
-        }
-        for (i = this.inputs.queues.current.length; i > 0; i--) {
-            this.importNextMove();
+
+            this.fetchNewMove();
             if (this.checkAlreadyFilled()) {
                 this.showBoardMsg(`Invalid board move requested: already filled`);
                 continue;
             }
-            this.boards.game[this.inputs.colm][this.inputs.row];
-            this.updateLogPlayed();
+            this.playMove(false);
 
-            this.inputs.turn++;
+            this.turn++;
             // do not change color until first player plays all handicap stones
-            this.inputs.queues.current.shift();
-            this.inputs.currentPlayer = this.inputs.queues.current[0];
             this.createNewLogsRemoved();
+            blackIndex++;
         }
     }
     initializeGame() {
-        this.loadColors(); // to get the correct queues, load colors first
-        this.loadQueues();
-        this.inputs.currentPlayer = this.inputs.queues.current[0];
+        this.loadColors(); // to get the correct player data, load colors first
+        this.loadQueue();
     }
     scoreGame() {
         // let both players manually remove dead stones
@@ -370,7 +438,7 @@ class Game {
         this.initializeGame();
         
         while (!this.statuses.some( (bool) => !!bool )) {
-            this.importNextMove();
+            this.fetchNewMove();
             if (!this.checkPass()) {
                 // Game tests
 
@@ -387,7 +455,7 @@ class Game {
                     this.scoreGame();
                     if (this.statuses.isScored) {
                         this.endGame();
-                        this.uploadGameToServer(server);
+                        //this.uploadGameToServer(server);
                         break;
                     }
                     continue;
@@ -410,9 +478,9 @@ class Game {
 //////////////////////
 
 class FakeGame {
-    constructor(boards, outputs, inputs, logs, group, tests, testResult) {
-        this.boards = { ...boards };
-        this.outputs = { ...outputs };
+    constructor(board, move, inputs, logs, group, tests, testResult) {
+        this.boards = { game: { ...board } };
+        this.move = { ...move };
         this.inputs = { ...inputs };
         this.logs = { ...logs };
         this.group = { ...group };
@@ -420,6 +488,23 @@ class FakeGame {
         this.tests = tests;
         for (testMethod in tests) {
             this[testMethod] = tests[testMethod];
+        }
+
+        this.removeOnlyGroup = function (grp) {
+            for (i = 0; i < grp.colms.length; i++) {
+                this.boards.game[grp.colms[i]][grp.rows[i]] = undefined;
+            }
+        };
+
+        this.removeOnlyCapturableNearbyGroups = function () {
+            for ([c, r] of this.inputs.adjacent.adjacentOpponent) {
+                const grp = new Group(c, r, this.boards.game, this.settings.width, this.settings.height,
+                                      this.inputs.colors, this.getNewBoard, this.checkColmRowAreValid);
+                if (this.checkMoveWouldCaptureGroup(grp, c, r)) {
+                    // remove dead group
+                    this.removeOnlyGroup(grp);
+                }
+            }
         }
 
         this.testResult = testResult;
@@ -433,6 +518,7 @@ class FakeGame {
         // this just checks if a position is a snapback position
 
         this.testResult = result;
+        this.removeOnlyCapturableNearbyGroups();
     }
     checkSendTwoRepeatOne() {
         // TODO: add specification
@@ -454,7 +540,7 @@ class Group {
     constructor(colm, row, gameBoard, width, height, colors, getNewBoard, checkColmRow) {
         if (gameBoard[colm][row]) {
             // check if there is no stone (hence no group) in that position
-            this.outputs =   { colm,
+            this.move =      { colm,
                                row,
                                width,
                                height
@@ -472,7 +558,7 @@ class Group {
             this.getNewBoard = getNewBoard;
             this.checkColmRowAreValid = checkColmRow;
 
-            this.fill(this.outputs.colm, this.outputs.row);
+            this.fill(this.move.colm, this.move.row);
             delete this.boards; // cleanup
         } else {
             return;
@@ -508,7 +594,7 @@ class Group {
             return;
         }
 
-        // else this.boards.GAME[colm][row] === this.outputs.colors.color,
+        // else this.boards.GAME[colm][row] === this.inputs.colors.color,
         // do we want to add it to our GROUP board?
         if (this.boards.group[colm][row]) {
             return; // not if we have already done this spot before ("our color" or "L")
