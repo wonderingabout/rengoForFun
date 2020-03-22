@@ -9,3 +9,5 @@ a:
 # Progress Status
 
 (unfinished) : Making it work on console (command-line) for now !
+
+only chinese rules are supported for now.
