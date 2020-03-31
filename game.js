@@ -1,5 +1,12 @@
-// go game engine (rengo)
-// working on console (command-line) only for now
+/* go game engine (rengo)
+   working on console (command-line) only for now
+
+   supported: - rules:  chinese only for now
+              - clocks (autodetected):
+                    * byoyomi (periods >= 1 && (maintime > 0 || periodtime > 0)),
+                    * simple (periods === 1 && maintime === 0 && periodtime > 0),
+                    * absolute (periods === 0 && maintime > 0 && periodtime === 0)
+*/                     
 
 "use strict";
 
@@ -31,36 +38,89 @@ class Settings {
         // only chinese rules are supported for now
         this.settings.rules = "chinese";
     }
+    checkResultNumIsValid(result) {
+        if (typeof result !== "number") {
+            console.log("Error: this is not a number, please enter a number");
+            return false;
+        }
+        return true;
+    }
+    checkResultIsBetweenMinMax(result, min, max, name, displayedMin = min, displayedMax = max) {
+        if (result < min || result > max) {
+            console.log(`${name} error: min is ${displayedMin}, max is ${displayedMax}`
+                        + `\nplease enter an allowed value in that range`);
+            return false;
+        }
+        return true;
+    }
+    checkResultStringIsValid(result) {
+        if (result.split(':').length !== 3) {
+            console.log(`Error: needs 2 colons (:), not ${result.split(':').length - 1}`);
+            return false;
+        }
+        for (const numString of result.split(':')) {
+            if (!isFinite(numString)) {
+                const errorMsg = `Invalid ${name}, please enter a valid ${name} `
+                                + `(in the hh:mm:ss format, for example `
+                                + `01:25:30 for 1 hours 25 minutes 30 seconds).\n`;
+                console.log(errorMsg);
+                return false;
+            }
+        }
+        return true;
+    }
+    getTimeStringFromSeconds(seconds) {
+        const hh = seconds / 3600;
+        const mm = ((seconds / 60) % 60);
+        const ss = seconds % 60;
+        return `${hh}:${mm}${ss}`;
+    }
+    getSecondsFromTimeString(timeString) {
+        const [hh, mm, ss] = getValidTimeString(timeString).split(':');
+        return (hh * 60 * 60) + (mm * 60) + ss;
+    }
     promptGameSettings() {
-        const settingsToAsk = [ ["width"   ,  19,    1,  25],
-                                ["height"  ,  19,    1,  25],
-                                ["handicap",  0 ,    0,  18],
-                                ["komi"    , 7.5, -361, 361]
+        const settingsToAsk = [ ["width"   ,   "board size width", 19, 1, 25],
+                                ["height"  ,   "boardsize height", 19, 1, 25],
+                                ["handicap",   "the number of handicap stones", 0 , 0, 18],
+                                ["komi"    ,   "komi", 7.5, -361, 361],
+                                ["periods" ,   "the number of periods (0 for simple time clock, "
+                                               + "1 or higher for byoyomi clock)", 3, 0, 10],
                               ];
-        for (const [setting, deft, min, max] of settingsToAsk) {
-            let suitedDeft = deft;
+        for (const [setting, name, deflt, min, max] of settingsToAsk) {
+            let suitedDeflt = deflt;
             let suitedMin  = min;
             // beware: always ask handicap before komi, and width before height
             if (setting === "height" && this.settings.width === 1) {
-                suitedDeft = 2;
+                suitedDeflt = 2;
                 suitedMin  = 2;
             }
             if (setting === "komi" && this.settings.handicap > 0) {
-                suitedDeft = 0.5;
+                suitedDeflt = 0.5;
             }
-            const result = prompt(`Choose ${setting}`, suitedDeft).toFixed(1);
-            if (typeof result !== "number") {
-                console.log("Error: this is not a number, please enter a number");
-                continue;
-            }
-            if (result < min || result > max) {
-                console.log(`Error: the ${setting} specified is out of range of allowed`
-                            + `values based on already entered values.`
-                            + `\nMin is ${suitedMin}, max is ${max}`
-                            + `\nplease enter an allowed value in that range`);
-                continue;
-            }
-            this.settings[setting] = result;
+
+            const result = Number(prompt(`Choose ${name} (min: ${suitedMin}, max: ${max})`, suitedDeflt));
+            if (!this.checkResultNumIsValid(result)) continue;
+            if (!this.checkResultIsBetweenMinMax(result, suitedMin, suitedMax, name)) continue;
+            this.settings[setting] = (Number( result.toFixed(1).slice(-1) ) === 0 ? Number(result.toFixed(0)) : Number(result.toFixed(1)));
+        }
+
+        const settingsTimeStringsToAsk = [ ["maintime", "maintime (in the hh:mm:ss format, "
+                                                        + "for example 00:20:00 for 0 hours 20 minutes 0 seconds)", 1600, 0, 3600],
+                                           ["periodtime", "periodtime (in the hh:mm:ss format, "
+                                                        + "for example 00:00:45 for 0 hours 0 minutes 45 seconds)", 45, 5, 180]
+                                         ];
+        for (const [setting, name, deflt, min, max] of settingsTimeStringsToAsk) {
+            const displayedDeflt = this.getTimeStringFromSeconds(deflt);
+            const displayedMin = this.getTimeStringFromSeconds(min);
+            const displayedMax = this.getTimeStringFromSeconds(max);
+
+            const result = prompt(`Choose ${name} in the hh:mm:ss format (min: ${displayedMin}, `
+                                  + `max: ${displayedMax})`, displayedDeflt).slice(0, 7);
+            if (!this.checkNumStringIsValid(result)) continue;
+            const resultNumber = this.getSecondsFromTimeString(result);
+            if (!this.checkResultIsBetweenMinMax(resultNumber, min, max, name, displayedMin, displayedMax)) continue;
+            this.settings[setting] = this.getSecondsFromTimeString(resultNumber);
         }
     }
     promptPlayersQueues() {
@@ -117,6 +177,16 @@ class Board {
     }
 }
 
+///////////////////
+////// Clock //////
+///////////////////
+
+class Clock {
+    constructor() {
+        // export methods (such as .pause() to the returned object)
+    }
+}
+
 //////////////////
 ////// Move //////
 //////////////////
@@ -145,9 +215,9 @@ class Move {
         */
 
         this.limits = { charCode: { min: "A".codePointAt(0),
-                                    // from 1 to width, ex: from 1 to 19,
-                                    // then adjust (+ 1) if higher than "I" to get the right character
-                                    max: this.getColmCodePointAdjusted("A".codePointAt(0) + this.settings.width),
+                                    // there are width - 1 additional slots starting from the first slot (slot 0)
+                                    // then adjust (+ 1) if higher than "I"
+                                    max: this.getColmCodePointAdjusted("A".codePointAt(0) + this.settings.width - 1),
                                     exception: "I".codePointAt(0)
                                   },
                         num:      { min: 1,
