@@ -16,7 +16,8 @@
 
 class Settings {
     constructor() {
-        // do not take methods in the returned new object
+        // do not take methods in the returned new object:
+        // we create settings only once
         this.settings= {};
 
         this.assignDate();
@@ -79,6 +80,27 @@ class Settings {
         const [hh, mm, ss] = getValidTimeString(timeString).split(':');
         return (hh * 60 * 60) + (mm * 60) + ss;
     }
+    checkTimeSettingsArePlayable(setting, seconds) {
+        if (setting === "maintime") {
+            if (this.settings.periods === 0 && seconds === 0) {
+                console.log(`The number of periods selected is ${this.settings.periods}, `
+                            + `${setting} can't be 0, please a value higher than 0.`);
+                return false;
+            }
+        }
+        if (setting === "periodtime") {
+            if (this.settings.maintime === 0 && seconds === 0) {
+                console.log(`Maintime was set to 0, you can't choose a ${setting} `
+                            + `value 0, please choose a ${setting} higher than 0.`);
+                return false;
+            }
+        }
+        return true;
+    }
+    getResultBoolean(name, deflt) {
+        const resultString = prompt(`Do you want to ${name}? (y/n):\n`, deflt);
+        return (resultString === "y" ? true : false);
+    }
     promptGameSettings() {
         const settingsToAsk = [ ["width"   ,   "board size width", 19, 1, 25],
                                 ["height"  ,   "boardsize height", 19, 1, 25],
@@ -102,7 +124,7 @@ class Settings {
             const result = Number(prompt(`Choose ${name} (min: ${suitedMin}, max: ${max})`, suitedDeflt));
             if (!this.checkResultNumIsValid(result)) continue;
             if (!this.checkResultIsBetweenMinMax(result, suitedMin, suitedMax, name)) continue;
-            this.settings[setting] = (Number( result.toFixed(1).slice(-1) ) === 0 ? Number(result.toFixed(0)) : Number(result.toFixed(1)));
+            this.settings[setting] = (Number( result.toFixed(1).slice(-1) ) === 0 ? Math.floor(result) : Number(result.toFixed(1)));
         }
 
         const settingsTimeStringsToAsk = [ ["maintime", "maintime (in the hh:mm:ss format, "
@@ -120,7 +142,13 @@ class Settings {
             if (!this.checkNumStringIsValid(result)) continue;
             const resultNumber = this.getSecondsFromTimeString(result);
             if (!this.checkResultIsBetweenMinMax(resultNumber, min, max, name, displayedMin, displayedMax)) continue;
-            this.settings[setting] = this.getSecondsFromTimeString(resultNumber);
+            if(!this.checkTimeSettingsArePlayable(setting, resultNumber)) continue;
+            this.settings[setting] = Math.floor(this.getSecondsFromTimeString(resultNumber));
+        }
+
+        const settingsBooleansToAsk = [ ["pauseIsAllowed", "allow pause", "y"] ];
+        for (const [setting, name, deflt] of settingsBooleansToAsk) {
+            this.settings[setting] = this.getResultBoolean(name, deflt);
         }
     }
     promptPlayersQueues() {
@@ -160,12 +188,82 @@ class Settings {
 }
 
 ///////////////////
+////// Clock //////
+///////////////////
+
+class Clock {
+    constructor(settings) {
+        // export methods as well: the same clock will be used
+        // during all the game, clock is a living object
+        const clockObj = { times:    { periods:    settings.periods,
+                                       maintime:   settings.maintime,
+                                       periodtime: settings.periodtime
+                                     }
+                         };
+
+        this.clock = { B: { ...clockObj },
+                       W: { ...clockObj },
+                       timerIds: { times: null,
+                                   reminder: null,
+                                   checkPause: null,
+                                   checkUnpause: null 
+                                 },
+                       isPaused: false,
+                       system: ""
+                     };
+        this.clock.system = this.autoDetectTimeSystem(settings);
+    }
+    autoDetectTimeSystem(settings) {
+        if (settings.periods === 0 && settings.maintime > 0) {
+            return "absolute";
+        }
+        if (settings.periods === 1 && settings.maintime === 0) {
+            return "simple";
+        }
+        if (settings.periods >= 1) {
+            return "byoyomi";
+        }
+        return "unknown byoyomi-like timecontrol";
+
+    }
+    resumeTime(currentColor) {
+        if (this.clock[currentColor].times.maintime > 0) {
+            this.clock[currentColor].times.maintime--;
+        } else {
+
+        }
+
+    }
+    checkPause() {
+        // 
+    }
+    checkUnpause() {
+        // 
+    }
+    pauseTime() {
+        for (timerId in this.clock.timerIds) {
+            if (timerId !== "pause") clearInterval(timerId);
+            else this.clock.timerIds.pause = setInterval(startPause, 1000); ////////////// TO CONTINUE NEXT TIME
+        }
+    }
+    stopTime() {
+        for (timerId in this.clock.timerIds) {
+            clearInterval(timerId);
+        }
+    }
+    handleTurnTime(currentColor) {
+        this.clock.timerIds.times = setInterval(this.resumeTime, 1000, currentColor);
+        // clearInterval
+    }
+}
+
+///////////////////
 ////// Board //////
 ///////////////////
 
 class Board {
     constructor(width, height) {
-        // do not create "boards" container
+        // return only the created new board array, board is not a living object.
         this.game = [];
 
         // [height][width] is preferred over [width][height] to process
@@ -177,23 +275,14 @@ class Board {
     }
 }
 
-///////////////////
-////// Clock //////
-///////////////////
-
-class Clock {
-    constructor() {
-        // export methods (such as .pause() to the returned object)
-    }
-}
-
 //////////////////
 ////// Move //////
 //////////////////
 
 class Move {
     constructor(width, height, checkColmRowAreValid) {
-        // do not take methods in the returned new object
+        // do not take methods in the returned new object:
+        // we create a new move at every turn
         this.move = {};
         this.settings = { width,
                           height
@@ -355,12 +444,14 @@ class Game {
         console.log("Welcome on javascript rengo console !!\n Have a fun and have a nice game !!");
 
         this.settings = new Settings().settings;
+        this.clock = new Clock();
         this.move  =    {};
         this.boards =   { game:     [],
                           previous: [],
                           twoAgo:   []
                         },
         this.inputs =   { turn: 0,
+                          times: {},
                           queue: [],
                           colors:   { color:    'B',
                                       opponent: 'W'
@@ -699,71 +790,14 @@ class Game {
     }
 }
 
-////////////////////
-///// FakeGame /////
-////////////////////
-
-class FakeGame {
-    constructor(board, move, inputs, logs, group, tests, testResult) {
-        this.boards = { game: { ...board } };
-        this.move = { ...move };
-        this.inputs = { ...inputs };
-        this.logs = { ...logs };
-        this.group = { ...group };
-
-        this.tests = tests;
-        for (testMethod in tests) {
-            this[testMethod] = tests[testMethod];
-        }
-
-        this.removeOnlyGroup = function (grp) {
-            for (i = 0; i < grp.colms.length; i++) {
-                this.boards.game[grp.colms[i]][grp.rows[i]] = undefined;
-            }
-        };
-
-        this.removeOnlyCapturableNearbyGroups = function () {
-            for ([c, r] of this.inputs.adjacent.adjacentOpponent) {
-                const grp = new Group(c, r, this.boards.game, this.settings.width, this.settings.height,
-                                      this.inputs.colors, this.checkColmRowAreValid);
-                if (this.checkMoveWouldCaptureGroup(grp, c, r)) {
-                    // remove dead group
-                    this.removeOnlyGroup(grp);
-                }
-            }
-        }
-
-        this.testResult = testResult;
-        // check what would happen if we play the capture,
-        // using a deep copy of the real board as well as
-        // all other parameters fake copies if needed
-    }
-    checkSnapbackPosition() {
-        // check if next player can capture the stone group that captured a group,
-        // with a different number of captures for both players
-        // this just checks if a position is a snapback position
-
-        this.testResult = result;
-        this.removeOnlyCapturableNearbyGroups();
-    }
-    checkSendTwoRepeatOne() {
-        // TODO: add specification
-
-        // superko rule (chinese)
-        // https://senseis.xmp.net/?Superko
-        // avoid double ko
-        // and send two repeat one
-
-        this.testResult = result;
-    }
-}
-
 ///////////////////
 ////// Group //////
 ///////////////////
 
 class Group {
     constructor(colm, row, gameBoard, width, height, colors, checkColmRow) {
+        // only take the returned new group from game board:
+        // group is not a living object
         if (gameBoard[colm][row]) {
             // check if there is no stone (hence no group) in that position
             this.move =      { colm,
@@ -837,6 +871,66 @@ class Group {
     }
 }
 
+////////////////////
+///// FakeGame /////
+////////////////////
+
+class FakeGame {
+    constructor(board, move, inputs, logs, group, tests, testResult) {
+        // TODO rewrite
+        this.boards = { game: { ...board } };
+        this.move = { ...move };
+        this.inputs = { ...inputs };
+        this.logs = { ...logs };
+        this.group = { ...group };
+
+        this.tests = tests;
+        for (testMethod in tests) {
+            this[testMethod] = tests[testMethod];
+        }
+
+        this.removeOnlyGroup = function (grp) {
+            for (i = 0; i < grp.colms.length; i++) {
+                this.boards.game[grp.colms[i]][grp.rows[i]] = undefined;
+            }
+        };
+
+        this.removeOnlyCapturableNearbyGroups = function () {
+            for ([c, r] of this.inputs.adjacent.adjacentOpponent) {
+                const grp = new Group(c, r, this.boards.game, this.settings.width, this.settings.height,
+                                      this.inputs.colors, this.checkColmRowAreValid);
+                if (this.checkMoveWouldCaptureGroup(grp, c, r)) {
+                    // remove dead group
+                    this.removeOnlyGroup(grp);
+                }
+            }
+        }
+
+        this.testResult = testResult;
+        // check what would happen if we play the capture,
+        // using a deep copy of the real board as well as
+        // all other parameters fake copies if needed
+    }
+    checkSnapbackPosition() {
+        // check if next player can capture the stone group that captured a group,
+        // with a different number of captures for both players
+        // this just checks if a position is a snapback position
+
+        this.testResult = result;
+        this.removeOnlyCapturableNearbyGroups();
+    }
+    checkSendTwoRepeatOne() {
+        // TODO: add specification
+
+        // superko rule (chinese)
+        // https://senseis.xmp.net/?Superko
+        // avoid double ko
+        // and send two repeat one
+
+        this.testResult = result;
+    }
+}
+
 /////////////////
 ////// Sgf //////
 /////////////////
@@ -844,7 +938,7 @@ class Group {
 /*TODO
 class Sgf {
     constructor(width, height) {
-        // do not take methods in the returned new object
+        // do not take methods in the returned new object:
         this.sgf = {};
 
         // details about sgf here: https://en.wikipedia.org/wiki/Smart_Game_Format
