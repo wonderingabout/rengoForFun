@@ -3,7 +3,7 @@ a:
 
 - vanillaJS powered board engine
 - vanillaJS front-end,
-- PHP back-end,
+- node.js back-end
 - mySQL database rengo server !
 
 # Progress Status
