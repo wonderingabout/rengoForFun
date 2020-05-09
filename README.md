@@ -1,22 +1,19 @@
 # rengoForFun
-a:
 
-- vanillaJS powered board engine
-- vanillaJS front-end,
-- node.js back-end
-- mySQL database rengo server !
+Playing go on a V8 engine!
 
-# Progress Status
+## Progress Status
 
-(unfinished) : Making it work on console (command-line) for now !
+(unfinished) : Making it work on console (command-line) for now!
 
 supported (for now):
 
-- environment: web browser only
+- environment: V8-capable web browser
 - rules: chinese rules only
-- clocks (autodetected): 
-```
-* byoyomi (periods >= 1 && (maintime > 0 || periodtime > 0)),
-* simple (periods === 1 && maintime === 0 && periodtime > 0),
-* absolute (periods === 0 && maintime > 0 && periodtime === 0)
+- clocks (autodetected):
+
+```Text
+byoyomi:  (periods >= 1  AND (maintime > 0 or periodtime > 0)),
+simple:   (periods === 1 AND (maintime === 0 and periodtime > 0),
+absolute: (periods === 0 AND (maintime > 0 and periodtime === 0)
 ```
